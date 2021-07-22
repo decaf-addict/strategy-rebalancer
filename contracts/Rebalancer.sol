@@ -39,8 +39,10 @@ contract Rebalancer {
     address[] public pathBA;
     address[] public pathRewardA;
     address[] public pathRewardB;
+    address[] public pathWethA;
+    address[] public pathWethB;
 
-    // This is a negligible amount of asset (~$4) donated by the strategist to initialize the balancer pool
+    // This is a negligible amount of asset (~$4 = 100 bpt) donated by the strategist to initialize the balancer pool
     // This amount is always kept in the pool to aid in rebalancing and also prevent pool from ever being fully empty
     uint256 public seedBptAmount;
     uint256 constant public max = type(uint256).max;
@@ -266,7 +268,6 @@ contract Rebalancer {
 
     // only applicable when pool is skewed and strat wants to completely pull out. Sells one token for another
     function evenOut() internal {
-
         uint256 _looseA = looseBalanceA();
         uint256 _looseB = looseBalanceB();
         uint256 _debtA = providerA.totalDebt();
@@ -382,6 +383,18 @@ contract Rebalancer {
         } else {
             revert("Unsupported token");
         }
+    }
+
+    // TODO switch to ySwapper when ready
+    function ethToWant(address _want, uint256 _amtInWei) external view returns (uint256 _wantAmount){
+        address[] memory path = new address[](2);
+        if (_want == address(weth)) {
+            return _amtInWei;
+        } else {
+            path[0] = address(weth);
+            path[1] = _want;
+        }
+        return uniswap.getAmountsOut(_amtInWei, path)[1];
     }
 
     //  updates providers

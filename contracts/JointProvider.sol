@@ -181,7 +181,7 @@ contract JointProvider is BaseStrategy {
      * @return The amount in `want` of `_amtInEth` converted to `want`
      **/
     function ethToWant(uint256 _amtInWei) public view virtual override returns (uint256) {
-
+        return balancer.ethToWant(address(want), _amtInWei);
     }
 
     // Helpers //
