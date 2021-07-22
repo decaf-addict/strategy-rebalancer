@@ -50,6 +50,7 @@ def keeper(accounts):
 
 @pytest.fixture
 def tokenA(interface):
+    # token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC
     token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # YFI
     yield interface.ERC20(token_address)
 
@@ -63,6 +64,8 @@ def tokenB(interface):
 @pytest.fixture
 def oracleA():
     feed = "0xA027702dbb89fbd58938e4324ac03B58d812b0E1"  # YFI/USD
+    # feed = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"  # USDC/USD
+
     yield Contract(feed)
 
 
@@ -73,48 +76,54 @@ def oracleB():
 
 
 @pytest.fixture
-def transferToRando(accounts, tokenA, tokenB, rando):
+def whaleA(accounts):
+    # YFI whale
+    return accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True)
+
+
+@pytest.fixture
+def whaleB(accounts):
+    return accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
+
+
+@pytest.fixture
+def transferToRando(accounts, tokenA, tokenB, rando, whaleA, whaleB):
     amount = 1000 * 10 ** tokenA.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
-    # YFI whale
-    reserve = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True)
-
-    tokenA.transfer(rando, amount, {"from": reserve})
+    tokenA.transfer(rando, amount, {"from": whaleA})
 
     amount = 10000 * 10 ** tokenB.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
     # WETH whale
-    reserve = accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
-    tokenB.transfer(rando, amount, {"from": reserve})
+    tokenB.transfer(rando, amount, {"from": whaleB})
 
 
 @pytest.fixture
-def amountA(accounts, tokenA, user):
+def amountA(accounts, tokenA, user, whaleA):
     amount = 1000 * 10 ** tokenA.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
     # YFI whale
-    reserve = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True)
+    # reserve = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True)
+    # USDC whale
 
-    tokenA.transfer(user, amount, {"from": reserve})
+    tokenA.transfer(user, amount, {"from": whaleA})
 
     yield amount
 
 
 @pytest.fixture
-def amountB(accounts, tokenB, user):
+def amountB(accounts, tokenB, user, whaleB):
     amount = 10000 * 10 ** tokenB.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
-    # WETH whale
-    reserve = accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
-    tokenB.transfer(user, amount, {"from": reserve})
+    tokenB.transfer(user, amount, {"from": whaleB})
     yield amount
 
 
@@ -158,8 +167,8 @@ def bpt():
 
 
 @pytest.fixture
-def rebalancer(strategist, bpt, Rebalancer, gov):
-    rebalancer = strategist.deploy(Rebalancer, gov, bpt)
+def rebalancer(strategist, bpt, Rebalancer):
+    rebalancer = strategist.deploy(Rebalancer, strategist, bpt)
     yield rebalancer
 
 
@@ -172,9 +181,11 @@ def providerA(strategist, keeper, vaultA, JointProvider, gov, rebalancer, oracle
 
 
 @pytest.fixture
-def providerB(strategist, keeper, vaultB, JointProvider, gov, rebalancer, oracleB):
-    strategy = strategist.deploy(JointProvider, vaultB, rebalancer, oracleB)
-    strategy.setKeeper(keeper)
+def providerB(providerA, strategist, keeper, vaultB, JointProvider, gov, rebalancer, oracleB, rewards):
+    transaction = providerA.cloneProvider(vaultB, strategist, rewards, keeper, rebalancer, oracleB,
+                                                  {"from": gov})
+    strategy = JointProvider.at(transaction.return_value)
+    strategy.setKeeper(keeper, {'from': gov})
     vaultB.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
@@ -223,11 +234,12 @@ def reward_whale(accounts):
 
 
 @pytest.fixture
-def setup(rebalancer, providerA, providerB, gov, bpt, owner, user):
-    rebalancer.setProviders(providerA, providerB, {'from': gov})
+def setup(rebalancer, providerA, providerB, gov, bpt, owner, user, strategist):
+    rebalancer.setProviders(providerA, providerB, {'from': strategist})
     bpt.transfer(rebalancer, bpt.balanceOf(owner), {'from': owner})
     bpt.setController(rebalancer, {'from': owner})
-    rebalancer.whitelistLiquidityProvider(rebalancer, {'from': gov})
+    rebalancer.whitelistLiquidityProvider(rebalancer, {'from': strategist})
+    rebalancer.setGovernment(gov, {'from': strategist})
 
 
 @pytest.fixture

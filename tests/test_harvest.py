@@ -49,7 +49,7 @@ def test_profitable_harvest(providerA, providerB, tokenA, tokenB, amountA, amoun
     util.stateOfStrat("after bal reward", rebalancer, providerA, providerB)
 
     ppsBeforeA = vaultA.pricePerShare()
-    ppsBeforeB = vaultA.pricePerShare()
+    ppsBeforeB = vaultB.pricePerShare()
 
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})

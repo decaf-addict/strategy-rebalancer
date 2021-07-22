@@ -8,6 +8,7 @@ import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/toke
 import "./Rebalancer.sol";
 import "../interfaces/Chainlink.sol";
 
+
 /**
  * Adapts Vault hooks to Balancer Contract and JointAdapter pair
  */
@@ -32,14 +33,11 @@ contract JointProvider is BaseStrategy {
         address _balancer,
         address _oracle
     ) external {
-        // TODO prevent reinitialization
         _initialize(_vault, _strategist, _rewards, _keeper);
         _initializeStrat(_balancer, _oracle);
     }
 
     function _initializeStrat(address _balancer, address _oracle) internal {
-        // TODO add some safety checks here
-        require(address(balancer) == address(0x0), "already initialized!");
         want.approve(_balancer, max);
         oracle = IPriceFeed(_oracle);
         balancer = Rebalancer(_balancer);
@@ -47,7 +45,7 @@ contract JointProvider is BaseStrategy {
 
     event Cloned(address indexed clone);
 
-    function cloneProviderStrategy(
+    function cloneProvider(
         address _vault,
         address _strategist,
         address _rewards,
@@ -81,8 +79,9 @@ contract JointProvider is BaseStrategy {
     // ******** OVERRIDE THESE METHODS FROM BASE CONTRACT ************
 
     function name() external view override returns (string memory) {
-        // Add your own name here, suggestion e.g. "StrategyCreamYFI"
-        return "StrategyBalancer";
+        return string(
+            abi.encodePacked(balancer.name(), ISymbol(address(want)).symbol(), "Provider")
+        );
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {

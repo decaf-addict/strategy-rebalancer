@@ -3,6 +3,9 @@ import brownie
 
 def test_permissions(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer, user, gov,
                      setup, RELATIVE_APPROX, testSetup, rando):
+    with brownie.reverts("Not rebalancer!"):
+        providerA.migrateRebalancer(rando, {'from': rando})
+
     with brownie.reverts():
         rebalancer.collectTradingFees({'from': rando})
 
@@ -41,3 +44,6 @@ def test_permissions(providerA, providerB, tokenA, tokenB, amountA, amountB, vau
 
     with brownie.reverts():
         rebalancer.migrateRebalancer(rando, {'from': rando})
+
+    with brownie.reverts():
+        rebalancer.setGovernment(rando, {'from': rando})

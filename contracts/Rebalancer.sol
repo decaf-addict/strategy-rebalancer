@@ -12,6 +12,10 @@ import "../interfaces/Uniswap.sol";
 import "../interfaces/Weth.sol";
 
 
+interface ISymbol {
+    function symbol() external view returns (string memory);
+}
+
 /**
  * Maintains liquidity pool and dynamically rebalances pool weights to minimize impermanent loss
  */
@@ -38,7 +42,7 @@ contract Rebalancer {
 
     // This is a negligible amount of asset (~$4) donated by the strategist to initialize the balancer pool
     // This amount is always kept in the pool to aid in rebalancing and also prevent pool from ever being fully empty
-    uint256 public seedBptAmount = 100 * 1e18;
+    uint256 public seedBptAmount;
     uint256 constant public max = type(uint256).max;
     uint256 constant public percent4 = 0.04 * 1e18;
     uint256 constant public percent96 = 0.96 * 1e18;
@@ -52,7 +56,24 @@ contract Rebalancer {
         _;
     }
 
+    modifier onlyGov{
+        require(msg.sender == government);
+        _;
+    }
+
     constructor(address _government, address _bpt) public {
+        _initialize(_government, _bpt);
+    }
+
+    function initialize(
+        address _government,
+        address _bpt
+    ) external {
+        require(address(bpt) == address(0x0), "Strategy already initialized");
+        _initialize(_government, _bpt);
+    }
+
+    function _initialize(address _government, address _bpt) internal {
         government = _government;
         bpt = IBalancerPoolToken(_bpt);
         pool = IBalancerPool(bpt.bPool());
@@ -60,12 +81,43 @@ contract Rebalancer {
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
         totalDenormWeight = pool.getTotalDenormalizedWeight();
+        seedBptAmount = 100 * 1e18;
     }
+
+    event Cloned(address indexed clone);
+
+    function cloneRebalancer(address _government, address _bpt) external returns (address newStrategy) {
+        bytes20 addressBytes = bytes20(address(this));
+
+        assembly {
+        // EIP-1167 bytecode
+            let clone_code := mload(0x40)
+            mstore(clone_code, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)
+            mstore(add(clone_code, 0x14), addressBytes)
+            mstore(add(clone_code, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)
+            newStrategy := create(0, clone_code, 0x37)
+        }
+
+        Rebalancer(newStrategy).initialize(_government, _bpt);
+
+        emit Cloned(newStrategy);
+    }
+
+
     event Debug(string msg, uint256 c);
     event Debug(address addr, uint256 c);
 
+    function name() external view returns (string memory) {
+        if (address(providerA) == address(0x0) || address(providerB) == address(0x0)) {
+            return "";
+        } else {
+            return string(
+                abi.encodePacked("Rebalancer", ISymbol(address(tokenA)).symbol(), "-", ISymbol(address(tokenB)).symbol(), " ")
+            );
+        }
+    }
+
     // collect profit from trading fees
-    // TODO account for airdrop hitting withdraw limit
     function collectTradingFees() public onlyAllowed {
         // there's profit
         uint256 _debtA = providerA.totalDebt();
@@ -75,32 +127,21 @@ contract Rebalancer {
         uint256 _pooledA = pooledBalanceA();
         uint256 _pooledB = pooledBalanceB();
         uint256 _bptTotal = balanceOfBpt();
-        emit Debug("_debtA", _debtA);
-        emit Debug("_debtB", _debtB);
-        emit Debug("_pooledA", _pooledA);
-        emit Debug("_pooledB", _pooledB);
-        emit Debug("_bptTotal", _bptTotal);
 
         if (_pooledA >= _debtA && _pooledB >= _debtB) {
             uint256 _gainA = _pooledA.sub(_debtA);
             uint256 _gainB = _pooledB.sub(_debtB);
             uint256 _looseABefore = looseBalanceA();
             uint256 _looseBBefore = looseBalanceB();
-            emit Debug("_gainA", _gainA);
-            emit Debug("_gainB", _gainB);
-            emit Debug("_looseABefore", _looseABefore);
-            emit Debug("_looseBBefore", _looseBBefore);
 
             if (_gainA > 0) {
                 bpt.exitswapExternAmountOut(address(tokenA), _gainA, balanceOfBpt());
                 tokenA.transfer(address(providerA), looseBalanceA().sub(_looseABefore));
-                emit Debug("looseBalanceA()", looseBalanceA());
             }
 
             if (_gainB > 0) {
                 bpt.exitswapExternAmountOut(address(tokenB), _gainB, balanceOfBpt());
                 tokenB.transfer(address(providerB), looseBalanceB().sub(_looseBBefore));
-                emit Debug("looseBalanceB()", looseBalanceB());
             }
         }
     }
@@ -110,6 +151,7 @@ contract Rebalancer {
         uint256 _rewards = balanceOfReward();
         if (_rewards > 0) {
             uint256 _half = balanceOfReward().div(2);
+            // TODO migrate to ySwapper when ready
             uniswap.swapExactTokensForTokens(_half, 0, pathRewardA, address(providerA), now);
             uniswap.swapExactTokensForTokens(_half, 0, pathRewardB, address(providerB), now);
         }
@@ -125,7 +167,6 @@ contract Rebalancer {
 
     // pull from providers
     function adjustPosition() public onlyAllowed {
-        emit Debug("adjustPosition", 0);
         if (providerA.totalDebt() == 0 || providerB.totalDebt() == 0) return;
         tokenA.transferFrom(address(providerA), address(this), providerA.balanceOfWant());
         tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
@@ -135,10 +176,13 @@ contract Rebalancer {
         _minAmounts[1] = 0;
         uint256 _bpt = balanceOfBpt();
         if (_bpt > seedBptAmount) {
+            emit Debug("_bpt.sub(seedBptAmount)", _bpt.sub(seedBptAmount));
+            emit Debug("pooledBalanceA", pooledBalanceA());
+            emit Debug("pooledBalanceB", pooledBalanceB());
             bpt.exitPool(_bpt.sub(seedBptAmount), _minAmounts);
+            emit Debug("exit success", 0);
         }
 
-        // TODO enforce pool weight limts
         uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
         uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
         uint256 _debtTotalUsd = _debtAUsd.add(_debtBUsd);
@@ -149,16 +193,8 @@ contract Rebalancer {
         }
         uint256 _weightDenormedA = totalDenormWeight.mul(_weightA).div(1e18);
         uint256 _weightDenormedB = totalDenormWeight.sub(_weightDenormedA);
-        emit Debug("_debtA", _debtAUsd);
-        emit Debug("_debtB", _debtBUsd);
-        emit Debug("_debtTotal", _debtTotalUsd);
-        emit Debug("totalDenormWeight", totalDenormWeight);
-        emit Debug("_weightDenormedA", _weightDenormedA);
-        emit Debug("_weightDenormedB", _weightDenormedB);
         bpt.updateWeight(address(tokenA), _weightDenormedA);
         bpt.updateWeight(address(tokenB), _weightDenormedB);
-        emit Debug("pool.currentWeightA()", currentWeightA());
-        emit Debug("pool.currentWeightB()", currentWeightB());
         uint256 _looseA = looseBalanceA();
         uint256 _looseB = looseBalanceB();
         uint256 _pooledA = pooledBalanceA();
@@ -167,23 +203,12 @@ contract Rebalancer {
         uint256 _ratioB = _looseB.div(_pooledB);
         uint256 _ratio = Math.min(_ratioA, _ratioB);
         uint256 _bptOut = bpt.totalSupply().mul(_ratio);
-        emit Debug("_looseA", _looseA);
-        emit Debug("_looseB", _looseB);
-        emit Debug("_pooledA", _pooledA);
-        emit Debug("_pooledB", _pooledB);
-        emit Debug("_ratioA", _ratioA);
-        emit Debug("_ratioB", _ratioB);
-        emit Debug("_bptOut", _bptOut);
 
         uint256[] memory _maxAmountIn = new uint256[](2);
         _maxAmountIn[0] = _looseA;
         _maxAmountIn[1] = _looseB;
         _bptOut = _bptOut.mul(98).div(100);
         bpt.joinPool(_bptOut, _maxAmountIn);
-        emit Debug("_looseA", looseBalanceA());
-        emit Debug("_looseB", looseBalanceB());
-        emit Debug("_pooledA", pooledBalanceA());
-        emit Debug("_pooledB", pooledBalanceB());
 
         // when at limit, don't pool in rest of balance since
         // it'll just create positive slippage opportunities for arbers
@@ -196,7 +221,6 @@ contract Rebalancer {
     function liquidatePosition(uint256 _amountNeeded, IERC20 _token, address _to) public onlyAllowed returns (uint256 _liquidated, uint256 _short){
         require(_to == address(providerA) || _to == address(providerB));
         uint256 _loose = _token.balanceOf(address(this));
-        emit Debug("_amountNeeded", _amountNeeded);
 
         if (_amountNeeded > _loose) {
             uint256 _amountNeededMore = _amountNeeded.sub(_loose);
@@ -212,10 +236,6 @@ contract Rebalancer {
             // This is harmless, as any extras will just be redeposited
             _bptNeeded = _bptNeeded.mul(1001).div(1000);
 
-            emit Debug("_amountNeededMore", _amountNeededMore);
-            emit Debug("_pooled", _pooled);
-            emit Debug("_percentBptNeeded", _percentBptNeeded);
-            emit Debug("_bptNeeded", _bptNeeded);
             uint256 _bptOut = Math.min(_bptNeeded, _bptTotal.sub(seedBptAmount));
             if (_bptOut > 0) {
                 bpt.exitPool(_bptOut, _minAmountsOut);
@@ -224,14 +244,12 @@ contract Rebalancer {
         } else {
             _liquidated = _amountNeeded;
         }
-        emit Debug("_amount", _liquidated);
 
         _token.transfer(_to, _liquidated);
         _short = _amountNeeded.sub(_liquidated);
     }
 
     function liquidateAllPositions(IERC20 _token, address _to) public onlyAllowed returns (uint256 _liquidatedAmount){
-        emit Debug("liquidateAllPositions", 0);
         require(_to == address(providerA) || _to == address(providerB));
         uint256[] memory _minAmountsOut = new uint256[](2);
         // tolerance can be tweaked
@@ -246,9 +264,8 @@ contract Rebalancer {
         _token.transfer(_to, _liquidatedAmount);
     }
 
-    // only applicable when pool is skewed and strat wants to completely pull out
+    // only applicable when pool is skewed and strat wants to completely pull out. Sells one token for another
     function evenOut() internal {
-        emit Debug("evenOut", 0);
 
         uint256 _looseA = looseBalanceA();
         uint256 _looseB = looseBalanceB();
@@ -256,10 +273,6 @@ contract Rebalancer {
         uint256 _debtB = providerB.totalDebt();
         uint256 _amount;
         address[] memory path;
-        emit Debug("_looseA", _looseA);
-        emit Debug("_looseB", _looseB);
-        emit Debug("_debtA", _debtA);
-        emit Debug("_debtB", _debtB);
 
         if (_looseA > _debtA && _looseB < _debtB) {
             // we have more A than B, sell some A
@@ -270,7 +283,6 @@ contract Rebalancer {
             _amount = _looseB.sub(_debtB);
             path = pathBA;
         }
-        emit Debug("_amount", _amount);
         if (_amount > 0) {
             uniswap.swapExactTokensForTokens(_amount, 0, path, address(this), now);
         }
@@ -279,7 +291,7 @@ contract Rebalancer {
 
     // Helpers //
 
-    function setProviders(address _providerA, address _providerB) public onlyAllowed {
+    function setProviders(address _providerA, address _providerB) public onlyGov {
         require(address(providerA) == address(0x0) && address(tokenA) == address(0x0), "Already initialized!");
         require(address(providerB) == address(0x0) && address(tokenB) == address(0x0), "Already initialized!");
 
@@ -313,7 +325,7 @@ contract Rebalancer {
         }
     }
 
-    function setReward(address _reward) external onlyAllowed {
+    function setReward(address _reward) external onlyGov {
         reward = IERC20(_reward);
         reward.approve(address(uniswap), max);
         if (address(tokenA) == address(weth) || address(tokenB) == address(weth)) {
@@ -332,24 +344,32 @@ contract Rebalancer {
 
     // WARNING: IRREVERSIBLE OPERATION
     // Relinquishing controller right will lose control over pool actions
-    function setController(address _controller) external onlyAllowed {
+    function setController(address _controller) external onlyGov {
         bpt.setController(_controller);
     }
 
-    function setSwapFee(uint256 _fee) external onlyAllowed {
+    function setSwapFee(uint256 _fee) external onlyGov {
         bpt.setSwapFee(_fee);
     }
 
-    function setPublicSwap(bool _isPublic) external onlyAllowed {
+    function setPublicSwap(bool _isPublic) external onlyGov {
         bpt.setPublicSwap(_isPublic);
     }
 
-    function whitelistLiquidityProvider(address _lp) external onlyAllowed {
+    function setGovernment(address _gov) external onlyGov {
+        government = _gov;
+    }
+
+    function whitelistLiquidityProvider(address _lp) external onlyGov {
         bpt.whitelistLiquidityProvider(_lp);
     }
 
-    function removeWhitelistedLiquidityProvider(address _lp) external onlyAllowed {
+    function removeWhitelistedLiquidityProvider(address _lp) external onlyGov {
         bpt.removeWhitelistedLiquidityProvider(_lp);
+    }
+
+    function setSeedBptAmount(uint256 _amount) external onlyGov {
+        seedBptAmount = _amount;
     }
 
     //  called by providers
@@ -365,7 +385,7 @@ contract Rebalancer {
     }
 
     //  updates providers
-    function migrateRebalancer(address _newRebalancer) external onlyAllowed {
+    function migrateRebalancer(address _newRebalancer) external onlyGov {
         bpt.transfer(_newRebalancer, balanceOfBpt());
         providerA.migrateRebalancer(_newRebalancer);
         providerB.migrateRebalancer(_newRebalancer);
