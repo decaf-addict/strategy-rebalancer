@@ -17,8 +17,8 @@ def test_revoke_strategy_from_strategy(providerA, providerB, tokenA, tokenB, amo
     vaultB.revokeStrategy(providerB.address, {"from": gov})
 
     chain.sleep(1)
-    providerA.harvest()
-    providerB.harvest()
+    providerA.harvest({"from": gov})
+    providerB.harvest({"from": gov})
 
     assert pytest.approx(tokenA.balanceOf(vaultA.address), rel=RELATIVE_APPROX) == amountA
     assert pytest.approx(tokenB.balanceOf(vaultB.address), rel=RELATIVE_APPROX) == amountB
@@ -35,12 +35,12 @@ def test_revoke_strategy_from_vault(providerA, providerB, tokenA, tokenB, amount
     chain.sleep(3600)
     chain.mine(1)
 
-    providerA.setEmergencyExit()
-    providerB.setEmergencyExit()
+    providerA.setEmergencyExit({"from": gov})
+    providerB.setEmergencyExit({"from": gov})
 
     chain.sleep(1)
-    providerA.harvest()
-    providerB.harvest()
+    providerA.harvest({"from": gov})
+    providerB.harvest({"from": gov})
 
     assert pytest.approx(tokenA.balanceOf(vaultA.address), rel=RELATIVE_APPROX) == amountA
     assert pytest.approx(tokenB.balanceOf(vaultB.address), rel=RELATIVE_APPROX) == amountB
@@ -68,8 +68,8 @@ def test_revoke_strategy_from_vault_realistic(providerA, providerB, tokenA, toke
     vaultB.revokeStrategy(providerB.address, {"from": gov})
 
     chain.sleep(1)
-    providerA.harvest()
-    providerB.harvest()
+    providerA.harvest({"from": gov})
+    providerB.harvest({"from": gov})
 
     util.stateOfStrat("after harvest", rebalancer, providerA, providerB)
 

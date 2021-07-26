@@ -47,7 +47,7 @@ def test_2_migrations_harvest(providerA, providerB, tokenA, tokenB, amountA, amo
 
 def test_rebalancer_migration(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer, user,
                               gov, setup, RELATIVE_APPROX, testSetup, chain, strategist, Rebalancer, oracleA, oracleB,
-                              bpt, reward, reward_whale, pool, rando):
+                              bpt, reward, reward_whale, pool, rando, transferToRando):
     # Deposit to the vault and harvest
     chain.sleep(1)
     providerA.harvest({"from": gov})

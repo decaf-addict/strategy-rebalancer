@@ -215,8 +215,22 @@ contract Rebalancer {
         // when at limit, don't pool in rest of balance since
         // it'll just create positive slippage opportunities for arbers
         if (!_atWeightLimit) {
-            bpt.joinswapExternAmountIn(address(tokenA), looseBalanceA(), 0);
-            bpt.joinswapExternAmountIn(address(tokenB), looseBalanceB(), 0);
+            joinPoolSingles();
+        }
+    }
+
+    function joinPoolSingles() public {
+        uint8 count;
+        while (count < 4) {
+            count++;
+            uint256 _looseA = looseBalanceA();
+            uint256 _looseB = looseBalanceB();
+            if (_looseA > 0 || _looseB > 0) {
+                if (_looseA > 0) bpt.joinswapExternAmountIn(address(tokenA), Math.min(_looseA, pooledBalanceA() / 2), 0);
+                if (_looseB > 0) bpt.joinswapExternAmountIn(address(tokenB), Math.min(_looseB, pooledBalanceB() / 2), 0);
+            } else {
+                return;
+            }
         }
     }
 
@@ -387,14 +401,16 @@ contract Rebalancer {
 
     // TODO switch to ySwapper when ready
     function ethToWant(address _want, uint256 _amtInWei) external view returns (uint256 _wantAmount){
-        address[] memory path = new address[](2);
-        if (_want == address(weth)) {
-            return _amtInWei;
-        } else {
-            path[0] = address(weth);
-            path[1] = _want;
+        if (_amtInWei > 0) {
+            address[] memory path = new address[](2);
+            if (_want == address(weth)) {
+                return _amtInWei;
+            } else {
+                path[0] = address(weth);
+                path[1] = _want;
+            }
+            return uniswap.getAmountsOut(_amtInWei, path)[1];
         }
-        return uniswap.getAmountsOut(_amtInWei, path)[1];
     }
 
     //  updates providers

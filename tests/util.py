@@ -9,6 +9,8 @@ def stateOfStrat(msg, balancer, providerA, providerB):
     print(f'Pooled balanceB: {balancer.pooledBalanceB() / 1e18}')
     print(f'priceA: {providerA.getPriceFeed() / 1e8}')
     print(f'priceB: {providerB.getPriceFeed() / 1e8}')
+    print(f'valuePooledA: {providerA.getPriceFeed() * balancer.pooledBalanceA() / 1e26}')
+    print(f'valuePooledB: {providerB.getPriceFeed() * balancer.pooledBalanceB() / 1e26}')
     print(f'WeightA: {balancer.currentWeightA() / 1e18}')
     print(f'WeightB: {balancer.currentWeightB() / 1e18}')
     print(f'BPT balance: {balancer.balanceOfBpt() / 1e18}')
