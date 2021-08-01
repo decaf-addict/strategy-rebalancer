@@ -92,6 +92,11 @@ contract JointProvider is BaseStrategy {
         return super.harvestTrigger(callCostInWei) && balancer.shouldHarvest();
     }
 
+    function tendTrigger(uint256 callCostInWei) public view override returns (bool){
+        (bool _tend, uint256 _expected, uint256 _actual) = balancer.shouldTend();
+        return _tend;
+    }
+
     event Debug(string msg, uint256 c);
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment) {

@@ -44,11 +44,15 @@ interface IBalancerPoolToken {
 }
 
 interface IBalancerPool {
+    function getSwapFee() external view returns (uint256);
+
     function getBalance(address token) external view returns (uint);
 
     function getTotalDenormalizedWeight() external view returns (uint256);
 
     function getDenormalizedWeight(address token) external view returns (uint256);
+
+    function getNormalizedWeight(address token) external view returns (uint256);
 
     function getCurrentTokens() external view returns (address[] calldata);
 
@@ -67,4 +71,14 @@ interface IBalancerPool {
         uint tokenAmountOut,
         uint maxPrice
     ) external returns (uint tokenAmountIn, uint spotPriceAfter);
+
+    function calcOutGivenIn(
+        uint tokenBalanceIn,
+        uint tokenWeightIn,
+        uint tokenBalanceOut,
+        uint tokenWeightOut,
+        uint tokenAmountIn,
+        uint swapFee
+    ) external view returns (uint tokenAmountOut);
 }
+

@@ -9,7 +9,7 @@ import {Math} from "@openzeppelin/contracts/math/Math.sol";
 contract TestOracle {
     uint256 private price;
 
-    function decimals() public view returns (uint8){
+    function decimals() public pure returns (uint8){
         return 8;
     }
 

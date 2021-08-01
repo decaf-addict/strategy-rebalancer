@@ -24,6 +24,14 @@ contract Rebalancer {
     using Address for address;
     using SafeMath for uint256;
 
+    struct RebalancerParams {
+        uint256 seedBptAmount;
+        uint256 joinPoolMultiplier;
+        uint256 exitPoolMultiplier;
+        uint256 joinPoolMaxTries;
+        uint256 tendBuffer;
+    }
+
     IERC20 public reward;
     IERC20 public tokenA;
     IERC20 public tokenB;
@@ -33,6 +41,7 @@ contract Rebalancer {
     IBalancerPool public pool;
     IUniswapV2Router02 public uniswap;
     IWETH9 public constant weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
+    RebalancerParams public params;
 
     address public government;
     address[] public pathAB;
@@ -44,7 +53,6 @@ contract Rebalancer {
 
     // This is a negligible amount of asset (~$4 = 100 bpt) donated by the strategist to initialize the balancer pool
     // This amount is always kept in the pool to aid in rebalancing and also prevent pool from ever being fully empty
-    uint256 public seedBptAmount;
     uint256 constant public max = type(uint256).max;
     uint256 constant public percent4 = 0.04 * 1e18;
     uint256 constant public percent96 = 0.96 * 1e18;
@@ -83,7 +91,7 @@ contract Rebalancer {
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
         totalDenormWeight = pool.getTotalDenormalizedWeight();
-        seedBptAmount = 100 * 1e18;
+        params = RebalancerParams(100 * 1e18, 98, 1001, 20, .001 * 1e18);
     }
 
     event Cloned(address indexed clone);
@@ -164,11 +172,71 @@ contract Rebalancer {
         uint256 _debtB = providerB.totalDebt();
         uint256 _pooledA = pooledBalanceA();
         uint256 _pooledB = pooledBalanceB();
-        return _pooledA >= _debtA && _pooledB >= _debtB;
+        return _pooledA >= _debtA && _pooledB >= _debtB && (_pooledA != _debtA && _pooledB != _debtB);
+    }
+
+    // If positive slippage caused by market movement is more than our swap fee, adjust position to erase slippage for user
+    // since positive slippage for user = negative slippage for pool aka loss for strat
+    function shouldTend() public view returns (bool _shouldTend, uint256, uint256){
+        uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
+        uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        uint256 _idealAUsd = _debtAUsd.add(_debtBUsd).mul(pool.getNormalizedWeight(address(tokenA))).div(1e18);
+        uint256 _idealBUsd = _debtAUsd.add(_debtBUsd).sub(_idealAUsd);
+
+        uint256 _balanceIn;
+        uint256 _balanceOut;
+        uint256 _weightIn;
+        uint256 _weightOut;
+        uint256 _amountIn;
+        uint256 _amountOutIfNoSlippage;
+
+        if (_idealAUsd > _debtAUsd) {
+            // if value of A is lower, users are incentivized to trade in A for B to make pool evenly balanced
+            _weightIn = currentWeightA();
+            _weightOut = currentWeightB();
+            _balanceIn = pooledBalanceA();
+            _balanceOut = pooledBalanceB();
+            _amountIn = _idealAUsd.sub(_debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
+            _amountOutIfNoSlippage = _debtBUsd.sub(_idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
+
+        } else {
+            // if value of B is lower, users are incentivized to trade in B for A to make pool evenly balanced
+            _weightIn = currentWeightB();
+            _weightOut = currentWeightA();
+            _balanceIn = pooledBalanceB();
+            _balanceOut = pooledBalanceA();
+            _amountIn = _idealBUsd.sub(_debtBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
+            _amountOutIfNoSlippage = _debtAUsd.sub(_idealAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
+        }
+
+        // calculate the actual amount out from trade
+        uint256 _amountOut = pool.calcOutGivenIn(_balanceIn, _weightIn, _balanceOut, _weightOut, _amountIn, 0);
+
+        // maximum positive slippage for user trading.
+        if (_amountOut > _amountOutIfNoSlippage) {
+            uint256 _slippage = _amountOut.sub(_amountOutIfNoSlippage).mul(1e18).div(_amountOutIfNoSlippage);
+            return (_slippage > pool.getSwapFee().sub(params.tendBuffer), _amountOutIfNoSlippage, _amountOut);
+        } else {
+            return (false, _amountOutIfNoSlippage, _amountOut);
+        }
+    }
+
+    function calculateNewWeights() internal view returns (uint256 _weightDenormedA, uint256 _weightDenormedB, bool _atWeightLimit){
+        uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
+        uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        uint256 _debtTotalUsd = _debtAUsd.add(_debtBUsd);
+
+        uint256 _weightA = Math.max(Math.min(_debtAUsd.mul(1e18).div(_debtTotalUsd), percent96), percent4);
+        if (_weightA == percent4 || _weightA == percent96) {
+            _atWeightLimit = true;
+        }
+        _weightDenormedA = totalDenormWeight.mul(_weightA).div(1e18);
+        _weightDenormedB = totalDenormWeight.sub(_weightDenormedA);
     }
 
     // pull from providers
     function adjustPosition() public onlyAllowed {
+        emit Debug("adjust position", 0);
         if (providerA.totalDebt() == 0 || providerB.totalDebt() == 0) return;
         tokenA.transferFrom(address(providerA), address(this), providerA.balanceOfWant());
         tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
@@ -177,40 +245,29 @@ contract Rebalancer {
         _minAmounts[0] = 0;
         _minAmounts[1] = 0;
         uint256 _bpt = balanceOfBpt();
-        if (_bpt > seedBptAmount) {
-            emit Debug("_bpt.sub(seedBptAmount)", _bpt.sub(seedBptAmount));
-            emit Debug("pooledBalanceA", pooledBalanceA());
-            emit Debug("pooledBalanceB", pooledBalanceB());
-            bpt.exitPool(_bpt.sub(seedBptAmount), _minAmounts);
-            emit Debug("exit success", 0);
+        if (_bpt > params.seedBptAmount) {
+            bpt.exitPool(_bpt.sub(params.seedBptAmount), _minAmounts);
         }
 
-        uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
-        uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
-        uint256 _debtTotalUsd = _debtAUsd.add(_debtBUsd);
-        bool _atWeightLimit;
-        uint256 _weightA = Math.max(Math.min(_debtAUsd.mul(1e18).div(_debtTotalUsd), percent96), percent4);
-        if (_weightA == percent4 || _weightA == percent96) {
-            _atWeightLimit = true;
-        }
-        uint256 _weightDenormedA = totalDenormWeight.mul(_weightA).div(1e18);
-        uint256 _weightDenormedB = totalDenormWeight.sub(_weightDenormedA);
+        (uint256 _weightDenormedA, uint256 _weightDenormedB, bool _atWeightLimit) = calculateNewWeights();
         bpt.updateWeight(address(tokenA), _weightDenormedA);
         bpt.updateWeight(address(tokenB), _weightDenormedB);
-        uint256 _looseA = looseBalanceA();
-        uint256 _looseB = looseBalanceB();
-        uint256 _pooledA = pooledBalanceA();
-        uint256 _pooledB = pooledBalanceB();
-        uint256 _ratioA = _looseA.div(_pooledA);
-        uint256 _ratioB = _looseB.div(_pooledB);
+        uint256 _ratioA = looseBalanceA().div(pooledBalanceA());
+        uint256 _ratioB = looseBalanceB().div(pooledBalanceB());
         uint256 _ratio = Math.min(_ratioA, _ratioB);
         uint256 _bptOut = bpt.totalSupply().mul(_ratio);
 
         uint256[] memory _maxAmountIn = new uint256[](2);
-        _maxAmountIn[0] = _looseA;
-        _maxAmountIn[1] = _looseB;
-        _bptOut = _bptOut.mul(98).div(100);
+        _maxAmountIn[0] = looseBalanceA();
+        _maxAmountIn[1] = looseBalanceB();
+        _bptOut = _bptOut.mul(params.joinPoolMultiplier).div(100);
         bpt.joinPool(_bptOut, _maxAmountIn);
+        emit Debug("currentWeightA", currentWeightA());
+        emit Debug("currentWeightB", currentWeightB());
+        emit Debug("looseBalanceA", looseBalanceA());
+        emit Debug("looseBalanceB", looseBalanceB());
+        emit Debug("pooledBalanceA", pooledBalanceA());
+        emit Debug("pooledBalanceB", pooledBalanceB());
 
         // when at limit, don't pool in rest of balance since
         // it'll just create positive slippage opportunities for arbers
@@ -221,10 +278,14 @@ contract Rebalancer {
 
     function joinPoolSingles() public {
         uint8 count;
-        while (count < 4) {
+        while (count < params.joinPoolMaxTries) {
             count++;
             uint256 _looseA = looseBalanceA();
             uint256 _looseB = looseBalanceB();
+            emit Debug("count", count);
+            emit Debug("_looseA", _looseA);
+            emit Debug("_looseB", _looseB);
+
             if (_looseA > 0 || _looseB > 0) {
                 if (_looseA > 0) bpt.joinswapExternAmountIn(address(tokenA), Math.min(_looseA, pooledBalanceA() / 2), 0);
                 if (_looseB > 0) bpt.joinswapExternAmountIn(address(tokenB), Math.min(_looseB, pooledBalanceB() / 2), 0);
@@ -250,9 +311,9 @@ contract Rebalancer {
 
             // Withdraw a little more than needed since pool exits a little short sometimes.
             // This is harmless, as any extras will just be redeposited
-            _bptNeeded = _bptNeeded.mul(1001).div(1000);
+            _bptNeeded = _bptNeeded.mul(params.exitPoolMultiplier).div(1000);
 
-            uint256 _bptOut = Math.min(_bptNeeded, _bptTotal.sub(seedBptAmount));
+            uint256 _bptOut = Math.min(_bptNeeded, _bptTotal.sub(params.seedBptAmount));
             if (_bptOut > 0) {
                 bpt.exitPool(_bptOut, _minAmountsOut);
                 _liquidated = Math.min(_amountNeeded, _token.balanceOf(address(this)));
@@ -271,7 +332,7 @@ contract Rebalancer {
         // tolerance can be tweaked
         _minAmountsOut[0] = pooledBalanceA().mul(99).div(100);
         _minAmountsOut[1] = pooledBalanceB().mul(99).div(100);
-        uint256 _bptOut = bpt.balanceOf(address(this)).sub(seedBptAmount);
+        uint256 _bptOut = bpt.balanceOf(address(this)).sub(params.seedBptAmount);
         if (_bptOut > 0) {
             bpt.exitPool(_bptOut, _minAmountsOut);
             evenOut();
@@ -383,8 +444,8 @@ contract Rebalancer {
         bpt.removeWhitelistedLiquidityProvider(_lp);
     }
 
-    function setSeedBptAmount(uint256 _amount) external onlyGov {
-        seedBptAmount = _amount;
+    function setRebalancerParams(RebalancerParams memory _params) external onlyGov {
+        params = _params;
     }
 
     //  called by providers

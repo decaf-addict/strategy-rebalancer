@@ -4,32 +4,32 @@ import pytest
 import util
 
 
-def test_trigger(gov, vaultA, vaultB, providerA, providerB, tokenA, tokenB, user, amountA, amountB, crv, crv_whale,
-                 setup, testSetup, chain, rebalancer, pool, transferToRando, rando):
-    providerA.harvest({"from": gov})
-    providerB.harvest({"from": gov})
+def test_triggers(providerATestOracle, providerBTestOracle, tokenA, tokenB, amountA, amountB, vaultA, vaultB,
+                  rebalancer, testOracleA, testOracleB, oracleA, oracleB,
+                  user, pool, gov, setupTestOracle, rando, transferToRando, chain, testSetup, reward, reward_whale):
+    testOracleA.setPrice(oracleA.latestAnswer(), {'from': rando})
+    testOracleB.setPrice(oracleB.latestAnswer(), {'from': rando})
 
-    chain.sleep(3600)
-    chain.mine(1)
+    providerATestOracle.harvest({"from": gov})
+    providerBTestOracle.harvest({"from": gov})
 
-    providerA.tendTrigger(0)
-    providerB.tendTrigger(0)
+    # changes too small to require tend = ~0.4% <(swap fee * 2)
+    testOracleA.setPrice(oracleA.latestAnswer() * .998, {'from': rando})
+    testOracleB.setPrice(oracleB.latestAnswer() * 1.002, {'from': rando})
 
-    chain.sleep(3600)
-    chain.mine(1)
+    assert providerATestOracle.tendTrigger(0) == False
+    assert providerBTestOracle.tendTrigger(0) == False
 
-    assert providerA.harvestTrigger(0) == True
-    assert providerB.harvestTrigger(0) == True
+    # changes large enough to require tend >(swap fee * 2)
+    testOracleA.setPrice(oracleA.latestAnswer() * .99, {'from': rando})
+    testOracleB.setPrice(oracleB.latestAnswer() * 1.01, {'from': rando})
 
-    util.simulate_2_sided_trades(rebalancer, tokenA, tokenB, providerA, providerB, pool, rando)
+    assert providerATestOracle.tendTrigger(0) == True
+    assert providerBTestOracle.tendTrigger(0) == True
 
-    assert providerA.harvestTrigger(0) == True
-    assert providerB.harvestTrigger(0) == True
+    rebalancer.setSwapFee(.015 * 1e18, {'from': gov})
 
-    providerA.harvest({"from": gov})
-    providerB.harvest({"from": gov})
+    assert providerATestOracle.tendTrigger(0) == False
+    assert providerBTestOracle.tendTrigger(0) == False
 
-    util.simulate_1_sided_trade(rebalancer, tokenA, tokenB, providerA, providerB, pool, rando)
 
-    assert providerA.harvestTrigger(0) == False
-    assert providerB.harvestTrigger(0) == False
