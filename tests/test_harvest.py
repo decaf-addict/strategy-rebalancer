@@ -52,9 +52,9 @@ def test_profitable_harvest(providerA, providerB, tokenA, tokenB, amountA, amoun
     ppsBeforeB = vaultB.pricePerShare()
 
     providerA.harvest({"from": gov})
+    util.stateOfStrat("harvestA after swap", rebalancer, providerA, providerB)
     providerB.harvest({"from": gov})
-
-    util.stateOfStrat("harvest after swap", rebalancer, providerA, providerB)
+    util.stateOfStrat("harvestB after swap", rebalancer, providerA, providerB)
 
     chain.sleep(3600)
     chain.mine(1)

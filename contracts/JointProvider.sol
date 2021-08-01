@@ -102,12 +102,13 @@ contract JointProvider is BaseStrategy {
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment) {
         emit Debug("prepareReturn", _debtOutstanding);
         uint256 _before = balanceOfWant();
-        emit Debug("before reap", _debtOutstanding);
+        emit Debug("prepareReturn jp before", _before);
         balancer.collectTradingFees();
         balancer.sellRewards();
-        emit Debug("after reap", _debtOutstanding);
 
         uint256 _after = balanceOfWant();
+        emit Debug("prepareReturn jp", _after);
+
         if (_after > _before) {
             _profit = _after.sub(_before);
         }
@@ -132,7 +133,7 @@ contract JointProvider is BaseStrategy {
     event Debug(address addr, uint256 c);
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        want.transfer(address(balancer), balanceOfWant());
+        emit Debug("adjustposition balance", balanceOfWant());
         balancer.adjustPosition();
     }
 

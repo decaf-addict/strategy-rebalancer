@@ -134,6 +134,7 @@ contract Rebalancer {
         uint256 _debtB = providerB.totalDebt();
 
         if (_debtA == 0 && _debtB == 0) return;
+
         uint256 _pooledA = pooledBalanceA();
         uint256 _pooledB = pooledBalanceB();
         uint256 _bptTotal = balanceOfBpt();
@@ -146,11 +147,14 @@ contract Rebalancer {
 
             if (_gainA > 0) {
                 bpt.exitswapExternAmountOut(address(tokenA), _gainA, balanceOfBpt());
+                emit Debug("collect A", looseBalanceA().sub(_looseABefore));
                 tokenA.transfer(address(providerA), looseBalanceA().sub(_looseABefore));
+
             }
 
             if (_gainB > 0) {
                 bpt.exitswapExternAmountOut(address(tokenB), _gainB, balanceOfBpt());
+                emit Debug("collect B", looseBalanceB().sub(_looseBBefore));
                 tokenB.transfer(address(providerB), looseBalanceB().sub(_looseBBefore));
             }
         }
@@ -175,7 +179,7 @@ contract Rebalancer {
         return _pooledA >= _debtA && _pooledB >= _debtB && (_pooledA != _debtA && _pooledB != _debtB);
     }
 
-    // If positive slippage caused by market movement is more than our swap fee, adjust position to erase slippage for user
+    // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage
     // since positive slippage for user = negative slippage for pool aka loss for strat
     function shouldTend() public view returns (bool _shouldTend, uint256, uint256){
         uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
@@ -221,18 +225,6 @@ contract Rebalancer {
         }
     }
 
-    function calculateNewWeights() internal view returns (uint256 _weightDenormedA, uint256 _weightDenormedB, bool _atWeightLimit){
-        uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
-        uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
-        uint256 _debtTotalUsd = _debtAUsd.add(_debtBUsd);
-
-        uint256 _weightA = Math.max(Math.min(_debtAUsd.mul(1e18).div(_debtTotalUsd), percent96), percent4);
-        if (_weightA == percent4 || _weightA == percent96) {
-            _atWeightLimit = true;
-        }
-        _weightDenormedA = totalDenormWeight.mul(_weightA).div(1e18);
-        _weightDenormedB = totalDenormWeight.sub(_weightDenormedA);
-    }
 
     // pull from providers
     function adjustPosition() public onlyAllowed {
@@ -249,7 +241,17 @@ contract Rebalancer {
             bpt.exitPool(_bpt.sub(params.seedBptAmount), _minAmounts);
         }
 
-        (uint256 _weightDenormedA, uint256 _weightDenormedB, bool _atWeightLimit) = calculateNewWeights();
+        uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
+        uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        uint256 _debtTotalUsd = _debtAUsd.add(_debtBUsd);
+        bool _atWeightLimit;
+
+        uint256 _weightA = Math.max(Math.min(_debtAUsd.mul(1e18).div(_debtTotalUsd), percent96), percent4);
+        if (_weightA == percent4 || _weightA == percent96) {
+            _atWeightLimit = true;
+        }
+        uint256 _weightDenormedA = totalDenormWeight.mul(_weightA).div(1e18);
+        uint256 _weightDenormedB = totalDenormWeight.sub(_weightDenormedA);
         bpt.updateWeight(address(tokenA), _weightDenormedA);
         bpt.updateWeight(address(tokenB), _weightDenormedB);
         uint256 _ratioA = looseBalanceA().div(pooledBalanceA());
@@ -262,18 +264,13 @@ contract Rebalancer {
         _maxAmountIn[1] = looseBalanceB();
         _bptOut = _bptOut.mul(params.joinPoolMultiplier).div(100);
         bpt.joinPool(_bptOut, _maxAmountIn);
-        emit Debug("currentWeightA", currentWeightA());
-        emit Debug("currentWeightB", currentWeightB());
-        emit Debug("looseBalanceA", looseBalanceA());
-        emit Debug("looseBalanceB", looseBalanceB());
-        emit Debug("pooledBalanceA", pooledBalanceA());
-        emit Debug("pooledBalanceB", pooledBalanceB());
 
         // when at limit, don't pool in rest of balance since
         // it'll just create positive slippage opportunities for arbers
         if (!_atWeightLimit) {
             joinPoolSingles();
         }
+
     }
 
     function joinPoolSingles() public {

@@ -4,7 +4,7 @@ import pytest
 import util
 
 
-def test_airdrop_to_pool(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer,
+def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer,
                          user, pool, gov, setup, rando, transferToRando, chain, testSetup, reward, reward_whale,
                          whaleA, whaleB):
     beforeHarvestA = pool.getDenormalizedWeight(tokenA)
