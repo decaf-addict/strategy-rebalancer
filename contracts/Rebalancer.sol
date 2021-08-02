@@ -112,10 +112,6 @@ contract Rebalancer {
         emit Cloned(newStrategy);
     }
 
-
-    event Debug(string msg, uint256 c);
-    event Debug(address addr, uint256 c);
-
     function name() external view returns (string memory) {
         if (address(providerA) == address(0x0) || address(providerB) == address(0x0)) {
             return "";
@@ -146,14 +142,12 @@ contract Rebalancer {
 
             if (_gainA > 0) {
                 bpt.exitswapExternAmountOut(address(tokenA), _gainA, balanceOfBpt());
-                emit Debug("collect A", looseBalanceA().sub(_looseABefore));
                 tokenA.transfer(address(providerA), looseBalanceA().sub(_looseABefore));
 
             }
 
             if (_gainB > 0) {
                 bpt.exitswapExternAmountOut(address(tokenB), _gainB, balanceOfBpt());
-                emit Debug("collect B", looseBalanceB().sub(_looseBBefore));
                 tokenB.transfer(address(providerB), looseBalanceB().sub(_looseBBefore));
             }
         }
@@ -227,7 +221,6 @@ contract Rebalancer {
 
     // pull from providers
     function adjustPosition() public onlyAllowed {
-        emit Debug("adjust position", 0);
         if (providerA.totalDebt() == 0 || providerB.totalDebt() == 0) return;
         tokenA.transferFrom(address(providerA), address(this), providerA.balanceOfWant());
         tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
@@ -278,9 +271,6 @@ contract Rebalancer {
             count++;
             uint256 _looseA = looseBalanceA();
             uint256 _looseB = looseBalanceB();
-            emit Debug("count", count);
-            emit Debug("_looseA", _looseA);
-            emit Debug("_looseB", _looseB);
 
             if (_looseA > 0 || _looseB > 0) {
                 if (_looseA > 0) bpt.joinswapExternAmountIn(address(tokenA), Math.min(_looseA, pooledBalanceA() / 2), 0);

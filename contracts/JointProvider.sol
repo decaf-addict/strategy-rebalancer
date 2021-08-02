@@ -97,24 +97,19 @@ contract JointProvider is BaseStrategy {
         return _tend;
     }
 
-    event Debug(string msg, uint256 c);
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment) {
-        emit Debug("prepareReturn", _debtOutstanding);
         uint256 _before = balanceOfWant();
-        emit Debug("prepareReturn jp before", _before);
         balancer.collectTradingFees();
         balancer.sellRewards();
 
         uint256 _after = balanceOfWant();
-        emit Debug("prepareReturn jp", _after);
 
         if (_after > _before) {
             _profit = _after.sub(_before);
         }
 
         if (_debtOutstanding > 0) {
-            emit Debug("if check", _debtOutstanding);
             if (vault.strategies(address(this)).debtRatio == 0) {
                 _debtPayment = balancer.liquidateAllPositions(want, address(this));
                 if (_debtPayment > _debtOutstanding) {
@@ -130,10 +125,8 @@ contract JointProvider is BaseStrategy {
     }
 
 
-    event Debug(address addr, uint256 c);
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        emit Debug("adjustposition balance", balanceOfWant());
         balancer.adjustPosition();
     }
 
@@ -144,8 +137,6 @@ contract JointProvider is BaseStrategy {
             balancer.liquidatePosition(_amountNeededMore, want, address(this));
             _liquidatedAmount = balanceOfWant();
             _loss = _amountNeeded.sub(_liquidatedAmount);
-            emit Debug("_liquidatedAmount", _liquidatedAmount);
-            emit Debug("_loss", _loss);
         } else {
             _liquidatedAmount = _amountNeeded;
         }
