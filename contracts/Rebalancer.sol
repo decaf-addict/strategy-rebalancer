@@ -15,7 +15,6 @@ import "../interfaces/Weth.sol";
 interface ISymbol {
     function symbol() external view returns (string memory);
 }
-
 /**
  * Maintains liquidity pool and dynamically rebalances pool weights to minimize impermanent loss
  */

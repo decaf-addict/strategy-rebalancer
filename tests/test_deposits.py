@@ -18,11 +18,10 @@ def test_1_deposit(providerA, tokenA, amountA, vaultA, rebalancer, user, chain, 
     providerA.harvest({"from": gov})
     after = rebalancer.pooledBalanceA()
 
-    assert providerA.balanceOfWant() == 0
+    # fund remains idle in provider
+    assert providerA.balanceOfWant() == amountA
     # no new lp created bc only one sided deposit
     assert after - before == 0
-    # fund remains idle in joint bc of above reason
-    assert rebalancer.looseBalanceA() == amountA
 
 
 def test_2_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer, user, gov,

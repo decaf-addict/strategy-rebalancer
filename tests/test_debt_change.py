@@ -38,7 +38,7 @@ def test_change_debt(providerA, providerB, tokenA, tokenB, amountA, amountB, vau
     providerA.harvest()
 
     # exiting everything out should leave only seed amount which will always be kept in the pool
-    assert rebalancer.balanceOfBpt() == rebalancer.seedBptAmount()
+    assert rebalancer.balanceOfBpt() == rebalancer.params()[0]
 
     # the estimatedTotalAssets of adapterA should now be the seed amount for A
     assert pytest.approx(providerA.estimatedTotalAssets(), rel=RELATIVE_APPROX) == rebalancer.pooledBalanceA()
@@ -87,7 +87,7 @@ def test_profitable_change_debt(providerA, providerB, tokenA, tokenB, amountA, a
     providerA.harvest()
 
     # exiting everything out should leave only seed amount which will always be kept in the pool
-    assert rebalancer.balanceOfBpt() == rebalancer.seedBptAmount()
+    assert rebalancer.balanceOfBpt() == rebalancer.params()[0]
 
     # the estimatedTotalAssets of adapterA should now be the seed amount for A
     assert pytest.approx(providerA.estimatedTotalAssets(), rel=RELATIVE_APPROX) == rebalancer.pooledBalanceA()
