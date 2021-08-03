@@ -174,7 +174,7 @@ contract Rebalancer {
 
     // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage
     // since positive slippage for user = negative slippage for pool aka loss for strat
-    function shouldTend() public view returns (bool _shouldTend, uint256, uint256){
+    function shouldTend() public view returns (bool _shouldTend){
         uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
         uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
         uint256 _idealAUsd = _debtAUsd.add(_debtBUsd).mul(pool.getNormalizedWeight(address(tokenA))).div(1e18);
@@ -212,9 +212,9 @@ contract Rebalancer {
         // maximum positive slippage for user trading.
         if (_amountOut > _amountOutIfNoSlippage) {
             uint256 _slippage = _amountOut.sub(_amountOutIfNoSlippage).mul(1e18).div(_amountOutIfNoSlippage);
-            return (_slippage > pool.getSwapFee().sub(params.tendBuffer), _amountOutIfNoSlippage, _amountOut);
+            return _slippage > pool.getSwapFee().sub(params.tendBuffer);
         } else {
-            return (false, _amountOutIfNoSlippage, _amountOut);
+            return false;
         }
     }
 

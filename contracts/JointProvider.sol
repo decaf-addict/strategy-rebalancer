@@ -93,8 +93,7 @@ contract JointProvider is BaseStrategy {
     }
 
     function tendTrigger(uint256 callCostInWei) public view override returns (bool){
-        (bool _tend, uint256 _expected, uint256 _actual) = balancer.shouldTend();
-        return _tend;
+        return balancer.shouldTend();
     }
 
 
