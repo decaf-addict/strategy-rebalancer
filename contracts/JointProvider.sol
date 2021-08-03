@@ -122,9 +122,7 @@ contract JointProvider is BaseStrategy {
             }
         }
     }
-
-
-
+    
     function adjustPosition(uint256 _debtOutstanding) internal override {
         balancer.adjustPosition();
     }

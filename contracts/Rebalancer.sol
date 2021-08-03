@@ -321,14 +321,14 @@ contract Rebalancer {
         uint256 _bptOut = bpt.balanceOf(address(this)).sub(params.seedBptAmount);
         if (_bptOut > 0) {
             bpt.exitPool(_bptOut, _minAmountsOut);
-            evenOut();
+            _evenOut();
         }
         _liquidatedAmount = _token.balanceOf(address(this));
         _token.transfer(_to, _liquidatedAmount);
     }
 
     // only applicable when pool is skewed and strat wants to completely pull out. Sells one token for another
-    function evenOut() internal {
+    function _evenOut() internal {
         uint256 _looseA = looseBalanceA();
         uint256 _looseB = looseBalanceB();
         uint256 _debtA = providerA.totalDebt();
