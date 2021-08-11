@@ -4,6 +4,7 @@ pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Math} from "@openzeppelin/contracts/math/Math.sol";
 
 import "./JointProvider.sol";
@@ -185,6 +186,7 @@ contract Rebalancer {
         uint256 _weightOut;
         uint256 _amountIn;
         uint256 _amountOutIfNoSlippage;
+        uint256 _outDecimals;
 
         if (_idealAUsd > _debtAUsd) {
             // if value of A is lower, users are incentivized to trade in A for B to make pool evenly balanced
@@ -194,6 +196,7 @@ contract Rebalancer {
             _balanceOut = pooledBalanceB();
             _amountIn = _idealAUsd.sub(_debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
             _amountOutIfNoSlippage = _debtBUsd.sub(_idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
+            _outDecimals = decimals(tokenB);
 
         } else {
             // if value of B is lower, users are incentivized to trade in B for A to make pool evenly balanced
@@ -203,6 +206,7 @@ contract Rebalancer {
             _balanceOut = pooledBalanceA();
             _amountIn = _idealBUsd.sub(_debtBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
             _amountOutIfNoSlippage = _debtAUsd.sub(_idealAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
+            _outDecimals = decimals(tokenA);
         }
 
         // calculate the actual amount out from trade
@@ -210,7 +214,7 @@ contract Rebalancer {
 
         // maximum positive slippage for user trading.
         if (_amountOut > _amountOutIfNoSlippage) {
-            uint256 _slippage = _amountOut.sub(_amountOutIfNoSlippage).mul(1e18).div(_amountOutIfNoSlippage);
+            uint256 _slippage = _amountOut.sub(_amountOutIfNoSlippage).mul(10 ** _outDecimals).div(_amountOutIfNoSlippage);
             return _slippage > pool.getSwapFee().sub(params.tendBuffer);
         } else {
             return false;
@@ -261,7 +265,6 @@ contract Rebalancer {
         if (!_atWeightLimit) {
             joinPoolSingles();
         }
-
     }
 
     function joinPoolSingles() public {
@@ -291,7 +294,7 @@ contract Rebalancer {
             uint256 _bptTotal = balanceOfBpt();
             _minAmountsOut[0] = 0;
             _minAmountsOut[1] = 0;
-            uint256 _percentBptNeeded = _amountNeededMore.mul(1e18).div(_pooled);
+            uint256 _percentBptNeeded = _amountNeededMore.mul(decimals(_token)).div(_pooled);
             uint256 _bptNeeded = _bptTotal.mul(_percentBptNeeded).div(1e18);
 
             // Withdraw a little more than needed since pool exits a little short sometimes.
@@ -502,6 +505,10 @@ contract Rebalancer {
 
     function currentWeightB() public view returns (uint256) {
         return pool.getDenormalizedWeight(address(tokenB));
+    }
+
+    function decimals(IERC20 _token) internal view returns (uint _decimals){
+        return ERC20(address(_token)).decimals();
     }
 }
 
