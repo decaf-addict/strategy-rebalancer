@@ -128,7 +128,7 @@ contract Rebalancer {
         uint256 _debtA = providerA.totalDebt();
         uint256 _debtB = providerB.totalDebt();
 
-        if (_debtA == 0 && _debtB == 0) return;
+        if (_debtA == 0 || _debtB == 0) return;
 
         uint256 _pooledA = pooledBalanceA();
         uint256 _pooledB = pooledBalanceB();
@@ -143,7 +143,6 @@ contract Rebalancer {
             if (_gainA > 0) {
                 bpt.exitswapExternAmountOut(address(tokenA), _gainA, balanceOfBpt());
                 tokenA.transfer(address(providerA), looseBalanceA().sub(_looseABefore));
-
             }
 
             if (_gainB > 0) {
@@ -169,7 +168,7 @@ contract Rebalancer {
         uint256 _debtB = providerB.totalDebt();
         uint256 _pooledA = pooledBalanceA();
         uint256 _pooledB = pooledBalanceB();
-        return _pooledA >= _debtA && _pooledB >= _debtB && (_pooledA != _debtA && _pooledB != _debtB);
+        return (_pooledA >= _debtA && _pooledB > _debtB) || (_pooledA > _debtA && _pooledB >= _debtB);
     }
 
     // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage

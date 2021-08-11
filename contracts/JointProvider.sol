@@ -17,12 +17,12 @@ contract JointProvider is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    Rebalancer public balancer;
+    Rebalancer public rebalancer;
     IPriceFeed public oracle;
     uint256 constant public max = type(uint256).max;
 
-    constructor(address _vault, address _balancer, address _oracle) public BaseStrategy(_vault) {
-        _initializeStrat(_balancer, _oracle);
+    constructor(address _vault, address _rebalancer, address _oracle) public BaseStrategy(_vault) {
+        _initializeStrat(_rebalancer, _oracle);
     }
 
     function initialize(
@@ -37,10 +37,10 @@ contract JointProvider is BaseStrategy {
         _initializeStrat(_balancer, _oracle);
     }
 
-    function _initializeStrat(address _balancer, address _oracle) internal {
-        want.approve(_balancer, max);
+    function _initializeStrat(address _rebalancer, address _oracle) internal {
+        want.approve(_rebalancer, max);
         oracle = IPriceFeed(_oracle);
-        balancer = Rebalancer(_balancer);
+        rebalancer = Rebalancer(_rebalancer);
     }
 
     event Cloned(address indexed clone);
@@ -80,27 +80,27 @@ contract JointProvider is BaseStrategy {
 
     function name() external view override returns (string memory) {
         return string(
-            abi.encodePacked(balancer.name(), ISymbol(address(want)).symbol(), "Provider")
+            abi.encodePacked(rebalancer.name(), ISymbol(address(want)).symbol(), "Provider")
         );
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return want.balanceOf(address(this)).add(balancer.balanceOf(want));
+        return want.balanceOf(address(this)).add(rebalancer.balanceOf(want));
     }
 
     function harvestTrigger(uint256 callCostInWei) public view override returns (bool){
-        return super.harvestTrigger(callCostInWei) && balancer.shouldHarvest();
+        return super.harvestTrigger(callCostInWei) && rebalancer.shouldHarvest();
     }
 
     function tendTrigger(uint256 callCostInWei) public view override returns (bool){
-        return balancer.shouldTend();
+        return rebalancer.shouldTend();
     }
 
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment) {
         uint256 _before = balanceOfWant();
-        balancer.collectTradingFees();
-        balancer.sellRewards();
+        rebalancer.collectTradingFees();
+        rebalancer.sellRewards();
 
         uint256 _after = balanceOfWant();
 
@@ -110,7 +110,7 @@ contract JointProvider is BaseStrategy {
 
         if (_debtOutstanding > 0) {
             if (vault.strategies(address(this)).debtRatio == 0) {
-                _debtPayment = balancer.liquidateAllPositions(want, address(this));
+                _debtPayment = rebalancer.liquidateAllPositions(want, address(this));
                 if (_debtPayment > _debtOutstanding) {
                     _profit.add(_debtPayment.sub(_debtOutstanding));
                     _debtPayment = _debtOutstanding;
@@ -118,20 +118,20 @@ contract JointProvider is BaseStrategy {
                     _loss = _debtOutstanding.sub(_debtPayment);
                 }
             } else {
-                (_debtPayment, _loss) = balancer.liquidatePosition(_debtOutstanding, want, address(this));
+                (_debtPayment, _loss) = rebalancer.liquidatePosition(_debtOutstanding, want, address(this));
             }
         }
     }
-    
+
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        balancer.adjustPosition();
+        rebalancer.adjustPosition();
     }
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss) {
         uint256 _loose = balanceOfWant();
         if (_amountNeeded > _loose) {
             uint256 _amountNeededMore = _amountNeeded.sub(_loose);
-            balancer.liquidatePosition(_amountNeededMore, want, address(this));
+            rebalancer.liquidatePosition(_amountNeededMore, want, address(this));
             _liquidatedAmount = balanceOfWant();
             _loss = _amountNeeded.sub(_liquidatedAmount);
         } else {
@@ -140,19 +140,19 @@ contract JointProvider is BaseStrategy {
     }
 
     function liquidateAllPositions() internal override returns (uint256 _amountFreed) {
-        balancer.liquidateAllPositions(want, address(this));
+        rebalancer.liquidateAllPositions(want, address(this));
         return want.balanceOf(address(this));
     }
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
     function prepareMigration(address _newStrategy) internal override {
         // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
-        balancer.migrateProvider(_newStrategy);
+        rebalancer.migrateProvider(_newStrategy);
     }
 
     function migrateRebalancer(address _newRebalancer) external {
-        require(msg.sender == address(balancer), "Not rebalancer!");
-        balancer = Rebalancer(_newRebalancer);
+        require(msg.sender == address(rebalancer), "Not rebalancer!");
+        rebalancer = Rebalancer(_newRebalancer);
         want.approve(_newRebalancer, max);
     }
 
@@ -175,7 +175,7 @@ contract JointProvider is BaseStrategy {
      * @return The amount in `want` of `_amtInEth` converted to `want`
      **/
     function ethToWant(uint256 _amtInWei) public view virtual override returns (uint256) {
-        return balancer.ethToWant(address(want), _amtInWei);
+        return rebalancer.ethToWant(address(want), _amtInWei);
     }
 
     // Helpers //

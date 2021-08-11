@@ -65,10 +65,12 @@ def test_revoke_strategy_from_vault_realistic(providerA, providerB, tokenA, toke
     util.stateOfStrat("after trade/before harvest", rebalancer, providerA, providerB)
 
     vaultA.revokeStrategy(providerA.address, {"from": gov})
+
+    providerA.harvest({"from": gov})
+
     vaultB.revokeStrategy(providerB.address, {"from": gov})
 
     chain.sleep(1)
-    providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
 
     util.stateOfStrat("after harvest", rebalancer, providerA, providerB)
