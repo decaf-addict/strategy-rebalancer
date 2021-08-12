@@ -22,9 +22,6 @@ def test_permissions(providerA, providerB, tokenA, tokenB, amountA, amountB, vau
         rebalancer.liquidateAllPositions(tokenA, rando, {'from': rando})
 
     with brownie.reverts():
-        rebalancer.setProviders(providerA, providerB, {'from': rando})
-
-    with brownie.reverts():
         rebalancer.setController(rebalancer, {'from': rando})
 
     with brownie.reverts():
@@ -46,4 +43,10 @@ def test_permissions(providerA, providerB, tokenA, tokenB, amountA, amountB, vau
         rebalancer.migrateRebalancer(rando, {'from': rando})
 
     with brownie.reverts():
-        rebalancer.setGovernment(rando, {'from': rando})
+        rebalancer.setGovernance(rando, {'from': rando})
+
+    with brownie.reverts():
+        providerA.migrateRebalancer(rando, {'from': rando})
+
+    with brownie.reverts():
+        providerA.setRebalancer(rando, {'from': rando})

@@ -21,8 +21,8 @@ contract JointProvider is BaseStrategy {
     IPriceFeed public oracle;
     uint256 constant public max = type(uint256).max;
 
-    constructor(address _vault, address _rebalancer, address _oracle) public BaseStrategy(_vault) {
-        _initializeStrat(_rebalancer, _oracle);
+    constructor(address _vault, address _oracle) public BaseStrategy(_vault) {
+        _initializeStrat(_oracle);
     }
 
     function initialize(
@@ -30,16 +30,19 @@ contract JointProvider is BaseStrategy {
         address _strategist,
         address _rewards,
         address _keeper,
-        address _balancer,
         address _oracle
     ) external {
         _initialize(_vault, _strategist, _rewards, _keeper);
-        _initializeStrat(_balancer, _oracle);
+        _initializeStrat(_oracle);
     }
 
-    function _initializeStrat(address _rebalancer, address _oracle) internal {
-        want.approve(_rebalancer, max);
+    function _initializeStrat(address _oracle) internal {
         oracle = IPriceFeed(_oracle);
+    }
+
+    function setRebalancer(address _rebalancer) external onlyAuthorized {
+        require(address(rebalancer) == address(0x0), "Rebalancer already set");
+        want.approve(_rebalancer, max);
         rebalancer = Rebalancer(_rebalancer);
     }
 
@@ -50,7 +53,6 @@ contract JointProvider is BaseStrategy {
         address _strategist,
         address _rewards,
         address _keeper,
-        address _balancer,
         address _oracle
     ) external returns (address newStrategy) {
         bytes20 addressBytes = bytes20(address(this));
@@ -69,7 +71,6 @@ contract JointProvider is BaseStrategy {
             _strategist,
             _rewards,
             _keeper,
-            _balancer,
             _oracle
         );
 
@@ -79,9 +80,13 @@ contract JointProvider is BaseStrategy {
     // ******** OVERRIDE THESE METHODS FROM BASE CONTRACT ************
 
     function name() external view override returns (string memory) {
-        return string(
-            abi.encodePacked(rebalancer.name(), ISymbol(address(want)).symbol(), "Provider")
-        );
+        if (address(rebalancer) == address(0x0)) {
+            return string(abi.encodePacked(ISymbol(address(want)).symbol(), "Provider"));
+        } else {
+            return string(
+                abi.encodePacked(rebalancer.name(), ISymbol(address(want)).symbol(), "Provider")
+            );
+        }
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
@@ -95,7 +100,6 @@ contract JointProvider is BaseStrategy {
     function tendTrigger(uint256 callCostInWei) public view override returns (bool){
         return rebalancer.shouldTend();
     }
-
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment) {
         uint256 _before = balanceOfWant();
@@ -150,6 +154,7 @@ contract JointProvider is BaseStrategy {
         rebalancer.migrateProvider(_newStrategy);
     }
 
+    // only called by rebalancer
     function migrateRebalancer(address _newRebalancer) external {
         require(msg.sender == address(rebalancer), "Not rebalancer!");
         rebalancer = Rebalancer(_newRebalancer);

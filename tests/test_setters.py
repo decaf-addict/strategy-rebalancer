@@ -5,13 +5,15 @@ import brownie
 
 def test_set_government(rebalancer, gov, setup, rando):
     with brownie.reverts():
-        rebalancer.setGovernment(rando, {'from': rando})
-    rebalancer.setGovernment(rando, {'from': gov})
+        rebalancer.setGovernance(rando, {'from': rando})
+    rebalancer.setGovernance(rando, {'from': gov})
 
 
-def test_set_providers(rebalancer, providerA, providerB, gov, setup):
-    with brownie.reverts("Already initialized!"):
-        rebalancer.setProviders(providerA, providerB, {'from': gov})
+def test_set_rebalancer(providerA, providerB, rebalancer, gov, setup):
+    with brownie.reverts("Rebalancer already set"):
+        providerA.setRebalancer(rebalancer, {'from': gov})
+    with brownie.reverts("Rebalancer already set"):
+        providerB.setRebalancer(rebalancer, {'from': gov})
 
 
 def test_set_reward(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer, user, gov,

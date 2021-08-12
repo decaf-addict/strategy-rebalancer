@@ -43,7 +43,7 @@ contract Rebalancer {
     IWETH9 public constant weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
     RebalancerParams public params;
 
-    address public government;
+    address public governance;
     address[] public pathAB;
     address[] public pathBA;
     address[] public pathRewardA;
@@ -62,41 +62,48 @@ contract Rebalancer {
         require(
             msg.sender == address(providerA) ||
             msg.sender == address(providerB) ||
-            msg.sender == government);
+            msg.sender == governance);
         _;
     }
 
     modifier onlyGov{
-        require(msg.sender == government);
+        require(msg.sender == governance);
         _;
     }
 
-    constructor(address _government, address _bpt) public {
-        _initialize(_government, _bpt);
+
+    constructor(address _providerA, address _providerB, address _governance, address _bpt) public {
+        _initialize(_providerA, _providerB, _governance, _bpt);
     }
 
     function initialize(
-        address _government,
+        address _providerA,
+        address _providerB,
+        address _governance,
         address _bpt
     ) external {
         require(address(bpt) == address(0x0), "Strategy already initialized");
-        _initialize(_government, _bpt);
+        require(address(providerA) == address(0x0) && address(tokenA) == address(0x0), "Already initialized!");
+        require(address(providerB) == address(0x0) && address(tokenB) == address(0x0), "Already initialized!");
+        _initialize(_providerA, _providerB, _governance, _bpt);
     }
 
-    function _initialize(address _government, address _bpt) internal {
-        government = _government;
+    function _initialize(address _providerA, address _providerB, address _governance, address _bpt) internal {
         bpt = IBalancerPoolToken(_bpt);
         pool = IBalancerPool(bpt.bPool());
+        governance = _governance;
         uniswap = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
         totalDenormWeight = pool.getTotalDenormalizedWeight();
         params = RebalancerParams(100 * 1e18, 98, 1001, 20, .001 * 1e18);
+
+        _setProviders(_providerA, _providerB);
     }
 
     event Cloned(address indexed clone);
 
-    function cloneRebalancer(address _government, address _bpt) external returns (address newStrategy) {
+    function cloneRebalancer(address _providerA, address _providerB, address _governance, address _bpt) external returns (address newStrategy) {
         bytes20 addressBytes = bytes20(address(this));
 
         assembly {
@@ -108,19 +115,15 @@ contract Rebalancer {
             newStrategy := create(0, clone_code, 0x37)
         }
 
-        Rebalancer(newStrategy).initialize(_government, _bpt);
+        Rebalancer(newStrategy).initialize(_providerA, _providerB, _governance, _bpt);
 
         emit Cloned(newStrategy);
     }
 
     function name() external view returns (string memory) {
-        if (address(providerA) == address(0x0) || address(providerB) == address(0x0)) {
-            return "";
-        } else {
-            return string(
-                abi.encodePacked("Rebalancer", ISymbol(address(tokenA)).symbol(), "-", ISymbol(address(tokenB)).symbol(), " ")
-            );
-        }
+        return string(
+            abi.encodePacked("Rebalancer", ISymbol(address(tokenA)).symbol(), "-", ISymbol(address(tokenB)).symbol(), " ")
+        );
     }
 
     // collect profit from trading fees
@@ -180,37 +183,36 @@ contract Rebalancer {
         uint256 _idealAUsd = _debtAUsd.add(_debtBUsd).mul(pool.getNormalizedWeight(address(tokenA))).div(1e18);
         uint256 _idealBUsd = _debtAUsd.add(_debtBUsd).sub(_idealAUsd);
 
-        uint256 _balanceIn;
-        uint256 _balanceOut;
-        uint256 _weightIn;
-        uint256 _weightOut;
+        // Using arrays otherwise we get "CompilerError: Stack too deep, try removing local variables."
+        uint256[] memory _balanceInOut = new uint256[](2);
+        uint256[] memory _weightInOut = new uint256[](2);
         uint256 _amountIn;
         uint256 _amountOutIfNoSlippage;
         uint256 _outDecimals;
 
         if (_idealAUsd > _debtAUsd) {
             // if value of A is lower, users are incentivized to trade in A for B to make pool evenly balanced
-            _weightIn = currentWeightA();
-            _weightOut = currentWeightB();
-            _balanceIn = pooledBalanceA();
-            _balanceOut = pooledBalanceB();
+            _weightInOut[0] = currentWeightA();
+            _weightInOut[1] = currentWeightB();
+            _balanceInOut[0] = pooledBalanceA();
+            _balanceInOut[1] = pooledBalanceB();
             _amountIn = _idealAUsd.sub(_debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
             _amountOutIfNoSlippage = _debtBUsd.sub(_idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
             _outDecimals = decimals(tokenB);
 
         } else {
             // if value of B is lower, users are incentivized to trade in B for A to make pool evenly balanced
-            _weightIn = currentWeightB();
-            _weightOut = currentWeightA();
-            _balanceIn = pooledBalanceB();
-            _balanceOut = pooledBalanceA();
+            _weightInOut[0] = currentWeightB();
+            _weightInOut[1] = currentWeightA();
+            _balanceInOut[0] = pooledBalanceB();
+            _balanceInOut[1] = pooledBalanceA();
             _amountIn = _idealBUsd.sub(_debtBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
             _amountOutIfNoSlippage = _debtAUsd.sub(_idealAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
             _outDecimals = decimals(tokenA);
         }
 
         // calculate the actual amount out from trade
-        uint256 _amountOut = pool.calcOutGivenIn(_balanceIn, _weightIn, _balanceOut, _weightOut, _amountIn, 0);
+        uint256 _amountOut = pool.calcOutGivenIn(_balanceInOut[0], _weightInOut[0], _balanceInOut[1], _weightInOut[1], _amountIn, 0);
 
         // maximum positive slippage for user trading.
         if (_amountOut > _amountOutIfNoSlippage) {
@@ -294,7 +296,7 @@ contract Rebalancer {
             uint256 _bptTotal = balanceOfBpt();
             _minAmountsOut[0] = 0;
             _minAmountsOut[1] = 0;
-            uint256 _percentBptNeeded = _amountNeededMore.mul(decimals(_token)).div(_pooled);
+            uint256 _percentBptNeeded = _amountNeededMore.mul(10 ** decimals(_token)).div(_pooled);
             uint256 _bptNeeded = _bptTotal.mul(_percentBptNeeded).div(1e18);
 
             // Withdraw a little more than needed since pool exits a little short sometimes.
@@ -355,10 +357,7 @@ contract Rebalancer {
 
     // Helpers //
 
-    function setProviders(address _providerA, address _providerB) public onlyGov {
-        require(address(providerA) == address(0x0) && address(tokenA) == address(0x0), "Already initialized!");
-        require(address(providerB) == address(0x0) && address(tokenB) == address(0x0), "Already initialized!");
-
+    function _setProviders(address _providerA, address _providerB) internal {
         providerA = JointProvider(_providerA);
         require(pool.getCurrentTokens()[0] == address(providerA.want()));
         tokenA = providerA.want();
@@ -420,8 +419,8 @@ contract Rebalancer {
         bpt.setPublicSwap(_isPublic);
     }
 
-    function setGovernment(address _gov) external onlyGov {
-        government = _gov;
+    function setGovernance(address _governance) external onlyGov {
+        governance = _governance;
     }
 
     function whitelistLiquidityProvider(address _lp) external onlyGov {
@@ -448,6 +447,13 @@ contract Rebalancer {
         }
     }
 
+    //  updates providers
+    function migrateRebalancer(address _newRebalancer) external onlyGov {
+        bpt.transfer(_newRebalancer, balanceOfBpt());
+        providerA.migrateRebalancer(_newRebalancer);
+        providerB.migrateRebalancer(_newRebalancer);
+    }
+
     // TODO switch to ySwapper when ready
     function ethToWant(address _want, uint256 _amtInWei) external view returns (uint256 _wantAmount){
         if (_amtInWei > 0) {
@@ -460,13 +466,6 @@ contract Rebalancer {
             }
             return uniswap.getAmountsOut(_amtInWei, path)[1];
         }
-    }
-
-    //  updates providers
-    function migrateRebalancer(address _newRebalancer) external onlyGov {
-        bpt.transfer(_newRebalancer, balanceOfBpt());
-        providerA.migrateRebalancer(_newRebalancer);
-        providerB.migrateRebalancer(_newRebalancer);
     }
 
     function balanceOfReward() public view returns (uint256){

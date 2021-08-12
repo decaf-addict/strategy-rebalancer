@@ -167,22 +167,28 @@ def bpt():
 
 
 @pytest.fixture
-def rebalancer(strategist, bpt, Rebalancer):
-    rebalancer = strategist.deploy(Rebalancer, strategist, bpt)
+def rebalancer(strategist, bpt, Rebalancer, providerA, providerB):
+    rebalancer = strategist.deploy(Rebalancer, providerA, providerB, strategist, bpt)
     yield rebalancer
 
 
 @pytest.fixture
-def providerA(strategist, keeper, vaultA, JointProvider, gov, rebalancer, oracleA):
-    strategy = strategist.deploy(JointProvider, vaultA, rebalancer, oracleA)
+def rebalancerTestOracle(strategist, bpt, Rebalancer, providerATestOracle, providerBTestOracle):
+    rebalancer = strategist.deploy(Rebalancer, providerATestOracle, providerBTestOracle, strategist, bpt)
+    yield rebalancer
+
+
+@pytest.fixture
+def providerA(strategist, keeper, vaultA, JointProvider, gov, oracleA):
+    strategy = strategist.deploy(JointProvider, vaultA, oracleA)
     strategy.setKeeper(keeper)
     vaultA.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
 
 @pytest.fixture
-def providerB(providerA, strategist, keeper, vaultB, JointProvider, gov, rebalancer, oracleB, rewards):
-    transaction = providerA.cloneProvider(vaultB, strategist, rewards, keeper, rebalancer, oracleB,
+def providerB(providerA, strategist, keeper, vaultB, JointProvider, gov, oracleB, rewards):
+    transaction = providerA.cloneProvider(vaultB, strategist, rewards, keeper, oracleB,
                                           {"from": gov})
     strategy = JointProvider.at(transaction.return_value)
     strategy.setKeeper(keeper, {'from': gov})
@@ -191,17 +197,17 @@ def providerB(providerA, strategist, keeper, vaultB, JointProvider, gov, rebalan
 
 
 @pytest.fixture
-def providerATestOracle(strategist, keeper, vaultA, JointProvider, gov, rebalancer, testOracleA):
-    strategy = strategist.deploy(JointProvider, vaultA, rebalancer, testOracleA)
+def providerATestOracle(strategist, keeper, vaultA, JointProvider, gov, testOracleA):
+    strategy = strategist.deploy(JointProvider, vaultA, testOracleA)
     strategy.setKeeper(keeper)
     vaultA.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
 
 @pytest.fixture
-def providerBTestOracle(providerATestOracle, strategist, keeper, vaultB, JointProvider, gov, rebalancer, testOracleB,
+def providerBTestOracle(providerATestOracle, strategist, keeper, vaultB, JointProvider, gov, testOracleB,
                         rewards):
-    transaction = providerATestOracle.cloneProvider(vaultB, strategist, rewards, keeper, rebalancer, testOracleB,
+    transaction = providerATestOracle.cloneProvider(vaultB, strategist, rewards, keeper, testOracleB,
                                                     {"from": gov})
     strategy = JointProvider.at(transaction.return_value)
     strategy.setKeeper(keeper, {'from': gov})
@@ -254,21 +260,31 @@ def reward_whale(accounts):
 
 @pytest.fixture
 def setup(rebalancer, providerA, providerB, gov, bpt, owner, user, strategist):
-    rebalancer.setProviders(providerA, providerB, {'from': strategist})
+    providerA.setRebalancer(rebalancer, {'from': owner})
+    providerB.setRebalancer(rebalancer, {'from': owner})
+
+    # send all seed funds from me to strat
     bpt.transfer(rebalancer, bpt.balanceOf(owner), {'from': owner})
+    # give control of pool from me to strat
     bpt.setController(rebalancer, {'from': owner})
+
+    # strat can whitelist itself now and setup things
     rebalancer.whitelistLiquidityProvider(rebalancer, {'from': strategist})
-    rebalancer.setGovernment(gov, {'from': strategist})
+    rebalancer.setGovernance(gov, {'from': strategist})
     rebalancer.setSwapFee(30 * 1e14, {'from': gov})
 
+
 @pytest.fixture
-def setupTestOracle(rebalancer, providerATestOracle, providerBTestOracle, gov, bpt, owner, user, strategist):
-    rebalancer.setProviders(providerATestOracle, providerBTestOracle, {'from': strategist})
-    bpt.transfer(rebalancer, bpt.balanceOf(owner), {'from': owner})
-    bpt.setController(rebalancer, {'from': owner})
-    rebalancer.whitelistLiquidityProvider(rebalancer, {'from': strategist})
-    rebalancer.setGovernment(gov, {'from': strategist})
-    rebalancer.setSwapFee(30 * 1e14, {'from': gov})
+def setupTestOracle(rebalancerTestOracle, providerATestOracle, providerBTestOracle, gov, bpt, owner, user, strategist):
+    providerATestOracle.setRebalancer(rebalancerTestOracle, {'from': owner})
+    providerBTestOracle.setRebalancer(rebalancerTestOracle, {'from': owner})
+
+    bpt.transfer(rebalancerTestOracle, bpt.balanceOf(owner), {'from': owner})
+    bpt.setController(rebalancerTestOracle, {'from': owner})
+    rebalancerTestOracle.whitelistLiquidityProvider(rebalancerTestOracle, {'from': strategist})
+    rebalancerTestOracle.setGovernance(gov, {'from': strategist})
+    rebalancerTestOracle.setSwapFee(30 * 1e14, {'from': gov})
+
 
 @pytest.fixture
 def testSetup(tokenA, vaultA, amountA, tokenB, vaultB, amountB, user):

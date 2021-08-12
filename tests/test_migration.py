@@ -14,7 +14,9 @@ def test_1_migration_harvest(providerA, providerB, tokenA, tokenB, amountA, amou
     assert pytest.approx(providerB.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amountB
 
     # migrate to a new strategy
-    new_strategyA = strategist.deploy(JointProvider, vaultA, rebalancer, oracleA)
+    new_strategyA = strategist.deploy(JointProvider, vaultA, oracleA)
+    new_strategyA.setRebalancer(rebalancer, {"from": gov})
+
     vaultA.migrateStrategy(providerA, new_strategyA, {"from": gov})
     assert (pytest.approx(new_strategyA.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amountA)
 
@@ -33,11 +35,15 @@ def test_2_migrations_harvest(providerA, providerB, tokenA, tokenB, amountA, amo
     assert pytest.approx(providerB.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amountB
 
     # migrate to a new strategy
-    new_strategyA = strategist.deploy(JointProvider, vaultA, rebalancer, oracleA)
+    new_strategyA = strategist.deploy(JointProvider, vaultA, oracleA)
+    new_strategyA.setRebalancer(rebalancer, {"from": gov})
+
     vaultA.migrateStrategy(providerA, new_strategyA, {"from": gov})
     assert (pytest.approx(new_strategyA.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amountA)
 
-    new_strategyB = strategist.deploy(JointProvider, vaultB, rebalancer, oracleB)
+    new_strategyB = strategist.deploy(JointProvider, vaultB, oracleB)
+    new_strategyB.setRebalancer(rebalancer, {"from": gov})
+
     vaultB.migrateStrategy(providerB, new_strategyB, {"from": gov})
     assert (pytest.approx(new_strategyB.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amountB)
 
@@ -56,14 +62,13 @@ def test_rebalancer_migration(providerA, providerB, tokenA, tokenB, amountA, amo
     assert pytest.approx(providerB.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amountB
 
     # migrate to a new strategy
-    new_rebalancer = strategist.deploy(Rebalancer, gov, bpt)
+    new_rebalancer = strategist.deploy(Rebalancer, providerA, providerB, gov, bpt)
 
     bpts = rebalancer.balanceOfBpt()
     rebalancer.migrateRebalancer(new_rebalancer, {'from': gov})
     assert new_rebalancer.balanceOfBpt() == bpts
 
     # setup for new rebalancer
-    new_rebalancer.setProviders(providerA, providerB, {'from': gov})
     rebalancer.setController(new_rebalancer, {'from': gov})
     new_rebalancer.removeWhitelistedLiquidityProvider(rebalancer, {'from': gov})
     new_rebalancer.whitelistLiquidityProvider(new_rebalancer, {'from': gov})

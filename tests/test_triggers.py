@@ -5,8 +5,8 @@ import util
 
 
 def test_triggers(providerATestOracle, providerBTestOracle, tokenA, tokenB, amountA, amountB, vaultA, vaultB,
-                  rebalancer, testOracleA, testOracleB, oracleA, oracleB,
-                  user, pool, gov, setupTestOracle, rando, transferToRando, chain, testSetup, reward, reward_whale):
+                  rebalancerTestOracle, testOracleA, testOracleB, oracleA, oracleB,
+                  user, gov, setupTestOracle, rando, transferToRando, chain, testSetup, reward, reward_whale):
     testOracleA.setPrice(oracleA.latestAnswer(), {'from': rando})
     testOracleB.setPrice(oracleB.latestAnswer(), {'from': rando})
 
@@ -27,7 +27,7 @@ def test_triggers(providerATestOracle, providerBTestOracle, tokenA, tokenB, amou
     assert providerATestOracle.tendTrigger(0) == True
     assert providerBTestOracle.tendTrigger(0) == True
 
-    rebalancer.setSwapFee(.015 * 1e18, {'from': gov})
+    rebalancerTestOracle.setSwapFee(.015 * 1e18, {'from': gov})
 
     assert providerATestOracle.tendTrigger(0) == False
     assert providerBTestOracle.tendTrigger(0) == False
