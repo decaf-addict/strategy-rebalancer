@@ -167,10 +167,11 @@ contract Rebalancer {
     function sellRewards() public onlyAllowed {
         uint256 _rewards = balanceOfReward();
         if (_rewards > 0) {
-            uint256 _half = balanceOfReward().div(2);
+            uint256 _rewardsA = balanceOfReward().mul(pool.getNormalizedWeight(address(tokenA))).div(1e18);
+            uint256 _rewardsB = _rewards.sub(_rewardsA);
             // TODO migrate to ySwapper when ready
-            uniswap.swapExactTokensForTokens(_half, 0, pathRewardA, address(providerA), now);
-            uniswap.swapExactTokensForTokens(_half, 0, pathRewardB, address(providerB), now);
+            uniswap.swapExactTokensForTokens(_rewardsA, 0, pathRewardA, address(providerA), now);
+            uniswap.swapExactTokensForTokens(_rewardsB, 0, pathRewardB, address(providerB), now);
         }
     }
 
