@@ -16,15 +16,15 @@ def test_clone_provider(providerA, providerB, setup, vaultA, vaultB, strategist,
 
 
 def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, bpt, tokenA, tokenB, providerA, providerB,
-                          pool, rando, transferToRando,
+                          pool, rando, transferToRando, strategist,
                           reward, reward_whale, vaultA, vaultB, chain):
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
 
     with brownie.reverts("Strategy already initialized"):
-        rebalancer.initialize(providerA, providerB, gov, bpt)
+        rebalancer.initialize(providerA, providerB, gov, strategist, bpt)
 
-    transaction = rebalancer.cloneRebalancer(providerA, providerB, gov, bpt, {"from": gov})
+    transaction = rebalancer.cloneRebalancer(providerA, providerB, gov, strategist, bpt, {"from": gov})
     cloned_rebalancer = Rebalancer.at(transaction.return_value)
 
     # cloned rebalancer should not have control over the same pool

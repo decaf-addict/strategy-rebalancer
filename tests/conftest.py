@@ -167,14 +167,14 @@ def bpt():
 
 
 @pytest.fixture
-def rebalancer(strategist, bpt, Rebalancer, providerA, providerB):
-    rebalancer = strategist.deploy(Rebalancer, providerA, providerB, strategist, bpt)
+def rebalancer(strategist, bpt, Rebalancer, providerA, providerB, gov):
+    rebalancer = strategist.deploy(Rebalancer, providerA, providerB, gov, strategist, bpt)
     yield rebalancer
 
 
 @pytest.fixture
-def rebalancerTestOracle(strategist, bpt, Rebalancer, providerATestOracle, providerBTestOracle):
-    rebalancer = strategist.deploy(Rebalancer, providerATestOracle, providerBTestOracle, strategist, bpt)
+def rebalancerTestOracle(strategist, bpt, Rebalancer, providerATestOracle, providerBTestOracle, gov):
+    rebalancer = strategist.deploy(Rebalancer, providerATestOracle, providerBTestOracle, gov, strategist, bpt)
     yield rebalancer
 
 
@@ -270,8 +270,7 @@ def setup(rebalancer, providerA, providerB, gov, bpt, owner, user, strategist):
 
     # strat can whitelist itself now and setup things
     rebalancer.whitelistLiquidityProvider(rebalancer, {'from': strategist})
-    rebalancer.setGovernance(gov, {'from': strategist})
-    rebalancer.setSwapFee(30 * 1e14, {'from': gov})
+    rebalancer.setSwapFee(30 * 1e14, {'from': strategist})
 
 
 @pytest.fixture
@@ -282,8 +281,7 @@ def setupTestOracle(rebalancerTestOracle, providerATestOracle, providerBTestOrac
     bpt.transfer(rebalancerTestOracle, bpt.balanceOf(owner), {'from': owner})
     bpt.setController(rebalancerTestOracle, {'from': owner})
     rebalancerTestOracle.whitelistLiquidityProvider(rebalancerTestOracle, {'from': strategist})
-    rebalancerTestOracle.setGovernance(gov, {'from': strategist})
-    rebalancerTestOracle.setSwapFee(30 * 1e14, {'from': gov})
+    rebalancerTestOracle.setSwapFee(30 * 1e14, {'from': strategist})
 
 
 @pytest.fixture

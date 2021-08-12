@@ -44,6 +44,7 @@ contract Rebalancer {
     RebalancerParams public params;
 
     address public governance;
+    address public strategist;
     address[] public pathAB;
     address[] public pathBA;
     address[] public pathRewardA;
@@ -62,36 +63,42 @@ contract Rebalancer {
         require(
             msg.sender == address(providerA) ||
             msg.sender == address(providerB) ||
-            msg.sender == governance);
+            msg.sender == governance, "!allowed");
         _;
     }
 
     modifier onlyGov{
-        require(msg.sender == governance);
+        require(msg.sender == governance, "!governance");
         _;
     }
 
+    modifier onlyAuthorized() {
+        require(msg.sender == strategist || msg.sender == governance, "!authorized");
+        _;
+    }
 
-    constructor(address _providerA, address _providerB, address _governance, address _bpt) public {
-        _initialize(_providerA, _providerB, _governance, _bpt);
+    constructor(address _providerA, address _providerB, address _governance, address _strategist, address _bpt) public {
+        _initialize(_providerA, _providerB, _governance, _strategist, _bpt);
     }
 
     function initialize(
         address _providerA,
         address _providerB,
         address _governance,
+        address _strategist,
         address _bpt
     ) external {
         require(address(bpt) == address(0x0), "Strategy already initialized");
         require(address(providerA) == address(0x0) && address(tokenA) == address(0x0), "Already initialized!");
         require(address(providerB) == address(0x0) && address(tokenB) == address(0x0), "Already initialized!");
-        _initialize(_providerA, _providerB, _governance, _bpt);
+        _initialize(_providerA, _providerB, _governance, _strategist, _bpt);
     }
 
-    function _initialize(address _providerA, address _providerB, address _governance, address _bpt) internal {
+    function _initialize(address _providerA, address _providerB, address _governance, address _strategist, address _bpt) internal {
         bpt = IBalancerPoolToken(_bpt);
         pool = IBalancerPool(bpt.bPool());
         governance = _governance;
+        strategist = _strategist;
         uniswap = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
@@ -103,7 +110,7 @@ contract Rebalancer {
 
     event Cloned(address indexed clone);
 
-    function cloneRebalancer(address _providerA, address _providerB, address _governance, address _bpt) external returns (address newStrategy) {
+    function cloneRebalancer(address _providerA, address _providerB, address _governance, address _strategist, address _bpt) external returns (address newStrategy) {
         bytes20 addressBytes = bytes20(address(this));
 
         assembly {
@@ -115,7 +122,7 @@ contract Rebalancer {
             newStrategy := create(0, clone_code, 0x37)
         }
 
-        Rebalancer(newStrategy).initialize(_providerA, _providerB, _governance, _bpt);
+        Rebalancer(newStrategy).initialize(_providerA, _providerB, _governance, _strategist, _bpt);
 
         emit Cloned(newStrategy);
     }
@@ -411,11 +418,11 @@ contract Rebalancer {
         bpt.setController(_controller);
     }
 
-    function setSwapFee(uint256 _fee) external onlyGov {
+    function setSwapFee(uint256 _fee) external onlyAuthorized {
         bpt.setSwapFee(_fee);
     }
 
-    function setPublicSwap(bool _isPublic) external onlyGov {
+    function setPublicSwap(bool _isPublic) external onlyAuthorized {
         bpt.setPublicSwap(_isPublic);
     }
 
@@ -423,15 +430,19 @@ contract Rebalancer {
         governance = _governance;
     }
 
-    function whitelistLiquidityProvider(address _lp) external onlyGov {
+    function setStrategist(address _governance) external onlyAuthorized {
+        governance = _governance;
+    }
+
+    function whitelistLiquidityProvider(address _lp) external onlyAuthorized {
         bpt.whitelistLiquidityProvider(_lp);
     }
 
-    function removeWhitelistedLiquidityProvider(address _lp) external onlyGov {
+    function removeWhitelistedLiquidityProvider(address _lp) external onlyAuthorized {
         bpt.removeWhitelistedLiquidityProvider(_lp);
     }
 
-    function setRebalancerParams(RebalancerParams memory _params) external onlyGov {
+    function setRebalancerParams(RebalancerParams memory _params) external onlyAuthorized {
         params = _params;
     }
 

@@ -62,7 +62,7 @@ def test_rebalancer_migration(providerA, providerB, tokenA, tokenB, amountA, amo
     assert pytest.approx(providerB.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amountB
 
     # migrate to a new strategy
-    new_rebalancer = strategist.deploy(Rebalancer, providerA, providerB, gov, bpt)
+    new_rebalancer = strategist.deploy(Rebalancer, providerA, providerB, gov, strategist, bpt)
 
     bpts = rebalancer.balanceOfBpt()
     rebalancer.migrateRebalancer(new_rebalancer, {'from': gov})
