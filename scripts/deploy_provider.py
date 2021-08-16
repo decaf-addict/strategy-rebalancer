@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from brownie import Strategy, accounts, config, network, project, web3
+from brownie import JointProvider, accounts, config, network, project, web3
 from eth_utils import is_checksum_address
 import click
 
@@ -41,6 +41,7 @@ def main():
         print("You should deploy one vault using scripts from Vault project")
         return  # TODO: Deploy one using scripts from Vault project
 
+    oracle = get_address("Oracle")
     print(
         f"""
     Strategy Parameters
@@ -55,4 +56,4 @@ def main():
     if input("Deploy Strategy? y/[N]: ").lower() != "y":
         return
 
-    strategy = Strategy.deploy(vault, {"from": dev}, publish_source=publish_source)
+    strategy = JointProvider.deploy(vault, oracle, {"from": dev}, publish_source=publish_source)
