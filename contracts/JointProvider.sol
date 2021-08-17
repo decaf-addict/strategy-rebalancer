@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 
-pragma solidity 0.6.12;
+pragma solidity ^0.6.12;
 pragma experimental ABIEncoderV2;
 
-import {BaseStrategy, StrategyParams} from "@yearnvaults/contracts/BaseStrategy.sol";
+import {BaseStrategy} from "@yearnvaults/contracts/BaseStrategy.sol";
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./Rebalancer.sol";
 import "../interfaces/Chainlink.sol";
@@ -162,23 +162,8 @@ contract JointProvider is BaseStrategy {
     }
 
     function protectedTokens() internal view override returns (address[] memory) {
-
     }
 
-    /**
-     * @notice
-     *  Provide an accurate conversion from `_amtInWei` (denominated in wei)
-     *  to `want` (using the native decimal characteristics of `want`).
-     * @dev
-     *  Care must be taken when working with decimals to assure that the conversion
-     *  is compatible. As an example:
-     *
-     *      given 1e17 wei (0.1 ETH) as input, and want is USDC (6 decimals),
-     *      with USDC/ETH = 1800, this should give back 1800000000 (180 USDC)
-     *
-     * @param _amtInWei The amount (in wei/1e-18 ETH) to convert to `want`
-     * @return The amount in `want` of `_amtInEth` converted to `want`
-     **/
     function ethToWant(uint256 _amtInWei) public view virtual override returns (uint256) {
         return rebalancer.ethToWant(address(want), _amtInWei);
     }
@@ -192,7 +177,6 @@ contract JointProvider is BaseStrategy {
         return vault.strategies(address(this)).totalDebt;
     }
 
-    // mind the decimals
     function getPriceFeed() public view returns (uint256 _lastestAnswer){
         return oracle.latestAnswer();
     }
