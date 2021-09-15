@@ -281,11 +281,11 @@ contract Rebalancer {
         // when at limit, don't pool in rest of balance since
         // it'll just create positive slippage opportunities for arbers
         if (!_atWeightLimit) {
-            joinPoolSingles();
+            _joinPoolSingles();
         }
     }
 
-    function joinPoolSingles() public {
+    function _joinPoolSingles() internal {
         uint8 count;
         while (count < params.joinPoolMaxTries) {
             count++;
