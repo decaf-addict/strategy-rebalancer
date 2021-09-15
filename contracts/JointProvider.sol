@@ -41,7 +41,7 @@ contract JointProvider is BaseStrategy {
         oracle = IPriceFeed(_oracle);
     }
 
-    function setRebalancer(address _rebalancer) external onlyAuthorized {
+    function setRebalancer(address _rebalancer) external onlyGov {
         require(address(rebalancer) == address(0x0), "Rebalancer already set");
         want.approve(_rebalancer, max);
         rebalancer = Rebalancer(_rebalancer);
