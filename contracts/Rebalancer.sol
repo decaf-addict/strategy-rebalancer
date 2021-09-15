@@ -64,42 +64,38 @@ contract Rebalancer {
         require(
             msg.sender == address(providerA) ||
             msg.sender == address(providerB) ||
-            msg.sender == governance, "!allowed");
+            msg.sender == providerA.getGovernance(), "!allowed");
         _;
     }
 
     modifier onlyGov{
-        require(msg.sender == governance, "!governance");
+        require(msg.sender == providerA.getGovernance(), "!governance");
         _;
     }
 
     modifier onlyAuthorized() {
-        require(msg.sender == strategist || msg.sender == governance, "!authorized");
+        require(msg.sender == providerA.strategist() || msg.sender == providerA.getGovernance(), "!authorized");
         _;
     }
 
-    constructor(address _providerA, address _providerB, address _governance, address _strategist, address _bpt) public {
-        _initialize(_providerA, _providerB, _governance, _strategist, _bpt);
+    constructor(address _providerA, address _providerB, address _bpt) public {
+        _initialize(_providerA, _providerB, _bpt);
     }
 
     function initialize(
         address _providerA,
         address _providerB,
-        address _governance,
-        address _strategist,
         address _bpt
     ) external {
         require(address(bpt) == address(0x0), "Strategy already initialized");
         require(address(providerA) == address(0x0) && address(tokenA) == address(0x0), "Already initialized!");
         require(address(providerB) == address(0x0) && address(tokenB) == address(0x0), "Already initialized!");
-        _initialize(_providerA, _providerB, _governance, _strategist, _bpt);
+        _initialize(_providerA, _providerB, _bpt);
     }
 
-    function _initialize(address _providerA, address _providerB, address _governance, address _strategist, address _bpt) internal {
+    function _initialize(address _providerA, address _providerB, address _bpt) internal {
         bpt = IBalancerPoolToken(_bpt);
         pool = IBalancerPool(bpt.bPool());
-        governance = _governance;
-        strategist = _strategist;
         uniswap = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
@@ -115,7 +111,7 @@ contract Rebalancer {
 
     event Cloned(address indexed clone);
 
-    function cloneRebalancer(address _providerA, address _providerB, address _governance, address _strategist, address _bpt) external returns (address newStrategy) {
+    function cloneRebalancer(address _providerA, address _providerB, address _bpt) external returns (address newStrategy) {
         require(isOriginal);
 
         bytes20 addressBytes = bytes20(address(this));
@@ -129,7 +125,7 @@ contract Rebalancer {
             newStrategy := create(0, clone_code, 0x37)
         }
 
-        Rebalancer(newStrategy).initialize(_providerA, _providerB, _governance, _strategist, _bpt);
+        Rebalancer(newStrategy).initialize(_providerA, _providerB, _bpt);
 
         emit Cloned(newStrategy);
     }
@@ -434,14 +430,6 @@ contract Rebalancer {
 
     function setPublicSwap(bool _isPublic) external onlyAuthorized {
         bpt.setPublicSwap(_isPublic);
-    }
-
-    function setGovernance(address _governance) external onlyGov {
-        governance = _governance;
-    }
-
-    function setStrategist(address _governance) external onlyAuthorized {
-        governance = _governance;
     }
 
     function whitelistLiquidityProvider(address _lp) external onlyGov {

@@ -189,4 +189,8 @@ contract JointProvider is BaseStrategy {
     function getPriceFeedDecimals() public view returns (uint256 _dec){
         return oracle.decimals();
     }
+
+    function getGovernance() public view returns (address){
+        return vault.governance();
+    }
 }
