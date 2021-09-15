@@ -405,6 +405,7 @@ contract Rebalancer {
     }
 
     function setReward(address _reward) external onlyGov {
+        reward.approve(address(uniswap), 0);
         reward = IERC20(_reward);
         reward.approve(address(uniswap), max);
         if (address(tokenA) == address(weth) || address(tokenB) == address(weth)) {
