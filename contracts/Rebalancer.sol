@@ -444,11 +444,11 @@ contract Rebalancer {
         governance = _governance;
     }
 
-    function whitelistLiquidityProvider(address _lp) external onlyAuthorized {
+    function whitelistLiquidityProvider(address _lp) external onlyGov {
         bpt.whitelistLiquidityProvider(_lp);
     }
 
-    function removeWhitelistedLiquidityProvider(address _lp) external onlyAuthorized {
+    function removeWhitelistedLiquidityProvider(address _lp) external onlyGov {
         bpt.removeWhitelistedLiquidityProvider(_lp);
     }
 
