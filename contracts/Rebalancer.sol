@@ -104,8 +104,12 @@ contract Rebalancer {
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
         totalDenormWeight = pool.getTotalDenormalizedWeight();
-        params = RebalancerParams(100 * 1e18, 98, 1001, 20, .001 * 1e18);
-
+        params = RebalancerParams({
+        seedBptAmount : 100 * 1e18,
+        joinPoolMultiplier : 98,
+        exitPoolMultiplier : 1001,
+        joinPoolMaxTries : 20,
+        tendBuffer : .001 * 1e18});
         _setProviders(_providerA, _providerB);
     }
 
