@@ -144,6 +144,7 @@ contract JointProvider is BaseStrategy {
             _loss = _amountNeeded.sub(_liquidatedAmount);
         } else {
             _liquidatedAmount = _amountNeeded;
+            _loss = 0;
         }
     }
 
