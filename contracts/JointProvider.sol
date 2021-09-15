@@ -84,10 +84,10 @@ contract JointProvider is BaseStrategy {
 
     function name() external view override returns (string memory) {
         if (address(rebalancer) == address(0x0)) {
-            return string(abi.encodePacked(ISymbol(address(want)).symbol(), "Provider"));
+            return string(abi.encodePacked(ISymbol(address(want)).symbol(), " JointProvider "));
         } else {
             return string(
-                abi.encodePacked(rebalancer.name(), ISymbol(address(want)).symbol(), "Provider")
+                abi.encodePacked(rebalancer.name()[0], ISymbol(address(want)).symbol(), " JointProvider ", rebalancer.name()[1])
             );
         }
     }

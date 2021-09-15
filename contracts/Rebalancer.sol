@@ -130,10 +130,11 @@ contract Rebalancer {
         emit Cloned(newStrategy);
     }
 
-    function name() external view returns (string memory) {
-        return string(
-            abi.encodePacked("Rebalancer", ISymbol(address(tokenA)).symbol(), "-", ISymbol(address(tokenB)).symbol(), " ")
-        );
+    function name() external view returns (string[] memory) {
+        string[] memory names;
+        names[0] = "Rebalancer";
+        names[1] = string(abi.encode(ISymbol(address(tokenA)).symbol(), "-", ISymbol(address(tokenB)).symbol()));
+        return names;
     }
 
     // collect profit from trading fees
