@@ -58,6 +58,7 @@ contract Rebalancer {
     uint256 constant public percent4 = 0.04 * 1e18;
     uint256 constant public percent96 = 0.96 * 1e18;
     uint256 public totalDenormWeight;
+    bool internal isOriginal = true;
 
     modifier onlyAllowed{
         require(
@@ -111,6 +112,8 @@ contract Rebalancer {
     event Cloned(address indexed clone);
 
     function cloneRebalancer(address _providerA, address _providerB, address _governance, address _strategist, address _bpt) external returns (address newStrategy) {
+        require(isOriginal);
+
         bytes20 addressBytes = bytes20(address(this));
 
         assembly {

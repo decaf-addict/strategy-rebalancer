@@ -20,6 +20,7 @@ contract JointProvider is BaseStrategy {
     Rebalancer public rebalancer;
     IPriceFeed public oracle;
     uint256 constant public max = type(uint256).max;
+    bool internal isOriginal = true;
 
     constructor(address _vault, address _oracle) public BaseStrategy(_vault) {
         _initializeStrat(_oracle);
@@ -55,6 +56,8 @@ contract JointProvider is BaseStrategy {
         address _keeper,
         address _oracle
     ) external returns (address newStrategy) {
+        require(isOriginal);
+
         bytes20 addressBytes = bytes20(address(this));
 
         assembly {
