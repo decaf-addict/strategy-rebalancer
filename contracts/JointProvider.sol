@@ -41,7 +41,7 @@ contract JointProvider is BaseStrategy {
         oracle = IPriceFeed(_oracle);
     }
 
-    function setRebalancer(address _rebalancer) external onlyGovernance {
+    function setRebalancer(address payable _rebalancer) external onlyGovernance {
         require(address(rebalancer) == address(0x0), "Rebalancer already set");
         want.approve(_rebalancer, max);
         rebalancer = Rebalancer(_rebalancer);
@@ -94,7 +94,7 @@ contract JointProvider is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return want.balanceOf(address(this)).add(rebalancer.balanceOf(want));
+        return want.balanceOf(address(this)).add(rebalancer.totalBalanceOf(want));
     }
 
     function harvestTrigger(uint256 callCostInWei) public view override returns (bool){
@@ -160,7 +160,7 @@ contract JointProvider is BaseStrategy {
     }
 
     // only called by rebalancer
-    function migrateRebalancer(address _newRebalancer) external {
+    function migrateRebalancer(address payable _newRebalancer) external {
         require(msg.sender == address(rebalancer), "Not rebalancer!");
         rebalancer = Rebalancer(_newRebalancer);
         want.approve(_newRebalancer, max);

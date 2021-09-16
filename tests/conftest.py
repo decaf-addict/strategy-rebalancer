@@ -265,12 +265,9 @@ def setup(rebalancer, providerA, providerB, gov, bpt, owner, user, strategist):
 
     # send all seed funds from me to strat
     bpt.transfer(rebalancer, bpt.balanceOf(owner), {'from': owner})
-    # give control of pool from me to strat
-    bpt.setController(rebalancer, {'from': owner})
 
-    # strat can whitelist itself now and setup things
-    rebalancer.whitelistLiquidityProvider(rebalancer, {'from': strategist})
-    rebalancer.setSwapFee(30 * 1e14, {'from': strategist})
+    # 0.3%
+    rebalancer.setSwapFee(0.003 * 1e18, {'from': strategist})
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Math} from "@openzeppelin/contracts/math/Math.sol";
 
 import "./JointProvider.sol";
-import "../interfaces/Balancer.sol";
+import "../interfaces/BalancerV2.sol";
 import "../interfaces/Uniswap.sol";
 import "../interfaces/Weth.sol";
 
@@ -24,42 +24,40 @@ contract Rebalancer {
     using Address for address;
     using SafeMath for uint256;
 
-    struct RebalancerParams {
-        uint256 seedBptAmount;
-        uint256 joinPoolMultiplier;
-        uint256 exitPoolMultiplier;
-        uint256 joinPoolMaxTries;
-        uint256 tendBuffer;
-    }
-
     IERC20 public reward;
     IERC20 public tokenA;
     IERC20 public tokenB;
     JointProvider public providerA;
     JointProvider public providerB;
-    IBalancerPoolToken public bpt;
-    IBalancerPool public pool;
     IUniswapV2Router02 public uniswap;
-    IWETH9 public constant weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
-    RebalancerParams public params;
+    IWETH9 private constant weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
+    ILiquidityBootstrappingPoolFactory public lbpFactory;
+    ILiquidityBootstrappingPool public lbp;
+    IBalancerVault public bVault;
 
-    address public governance;
-    address public strategist;
-    address[] public pathAB;
-    address[] public pathBA;
-    address[] public pathRewardA;
-    address[] public pathRewardB;
-    address[] public pathWethA;
-    address[] public pathWethB;
+    address[] private pathAB;
+    address[] private pathBA;
+    address[] private pathRewardA;
+    address[] private pathRewardB;
+    address[] private pathWethA;
+    address[] private pathWethB;
+    uint256[] private minAmountsOut;
 
     // This is a negligible amount of asset (~$4 = 100 bpt) donated by the strategist to initialize the balancer pool
     // This amount is always kept in the pool to aid in rebalancing and also prevent pool from ever being fully empty
-    uint256 constant public max = type(uint256).max;
-    uint256 constant public percent4 = 0.04 * 1e18;
-    uint256 constant public percent96 = 0.96 * 1e18;
-    uint256 public totalDenormWeight;
+    uint256 constant private max = type(uint256).max;
+    uint256 constant private percent4 = 0.04 * 1e18;
+    uint256 constant private percent96 = 0.96 * 1e18;
     bool internal isOriginal = true;
+    uint public tendBuffer;
 
+    modifier toOnlyAllowed(address _to){
+        require(
+            _to == address(providerA) ||
+            _to == address(providerB) ||
+            _to == providerA.getGovernance(), "!allowed");
+        _;
+    }
     modifier onlyAllowed{
         require(
             msg.sender == address(providerA) ||
@@ -78,40 +76,51 @@ contract Rebalancer {
         _;
     }
 
-    constructor(address _providerA, address _providerB, address _bpt) public {
-        _initialize(_providerA, _providerB, _bpt);
+    constructor(address _providerA, address _providerB, address _lbpFactory) public {
+        _initialize(_providerA, _providerB, _lbpFactory);
     }
 
     function initialize(
         address _providerA,
         address _providerB,
-        address _bpt
+        address _lbpFactory
     ) external {
-        require(address(bpt) == address(0x0), "Strategy already initialized");
         require(address(providerA) == address(0x0) && address(tokenA) == address(0x0), "Already initialized!");
         require(address(providerB) == address(0x0) && address(tokenB) == address(0x0), "Already initialized!");
-        _initialize(_providerA, _providerB, _bpt);
+        _initialize(_providerA, _providerB, _lbpFactory);
     }
 
-    function _initialize(address _providerA, address _providerB, address _bpt) internal {
-        bpt = IBalancerPoolToken(_bpt);
-        pool = IBalancerPool(bpt.bPool());
+    function _initialize(address _providerA, address _providerB, address _lbpFactory) internal {
         uniswap = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
-        totalDenormWeight = pool.getTotalDenormalizedWeight();
-        params = RebalancerParams({
-        seedBptAmount : 100 * 1e18,
-        joinPoolMultiplier : 98,
-        exitPoolMultiplier : 1001,
-        joinPoolMaxTries : 20,
-        tendBuffer : .001 * 1e18});
+        minAmountsOut = new uint256[](2);
+        tendBuffer = 0.001 * 1e18;
+
+        lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
         _setProviders(_providerA, _providerB);
+
+        IERC20[] memory tokens = new IERC20[](2);
+        tokens[0] = tokenA;
+        tokens[1] = tokenB;
+        uint[] memory initialWeights = new uint[](2);
+        initialWeights[0] = uint(50 * 1e18);
+        initialWeights[1] = uint(50 * 1e18);
+
+        lbp = ILiquidityBootstrappingPool(
+            lbpFactory.create(
+                "YFI-WETH Pool", "YFI-WETH yBPT",
+                tokens,
+                initialWeights,
+                0.01 * 1e18,
+                address(this),
+                true)
+        );
     }
 
     event Cloned(address indexed clone);
 
-    function cloneRebalancer(address _providerA, address _providerB, address _bpt) external returns (address newStrategy) {
+    function cloneRebalancer(address _providerA, address _providerB, address _lbpFactory) external returns (address payable newStrategy) {
         require(isOriginal);
 
         bytes20 addressBytes = bytes20(address(this));
@@ -125,7 +134,7 @@ contract Rebalancer {
             newStrategy := create(0, clone_code, 0x37)
         }
 
-        Rebalancer(newStrategy).initialize(_providerA, _providerB, _bpt);
+        Rebalancer(newStrategy).initialize(_providerA, _providerB, _lbpFactory);
 
         emit Cloned(newStrategy);
     }
@@ -139,7 +148,6 @@ contract Rebalancer {
 
     // collect profit from trading fees
     function collectTradingFees() public onlyAllowed {
-        // there's profit
         uint256 _debtA = providerA.totalDebt();
         uint256 _debtB = providerB.totalDebt();
 
@@ -147,21 +155,27 @@ contract Rebalancer {
 
         uint256 _pooledA = pooledBalanceA();
         uint256 _pooledB = pooledBalanceB();
-        uint256 _bptTotal = balanceOfBpt();
+        uint256 _lbpTotal = balanceOfLbp();
 
+        // there's profit
         if (_pooledA >= _debtA && _pooledB >= _debtB) {
             uint256 _gainA = _pooledA.sub(_debtA);
             uint256 _gainB = _pooledB.sub(_debtB);
             uint256 _looseABefore = looseBalanceA();
             uint256 _looseBBefore = looseBalanceB();
 
+            uint256[] memory amountsOut = new uint256[](2);
+            amountsOut[0] = _gainA;
+            amountsOut[1] = _gainB;
+            bytes memory userData = abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp());
+            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets(), minAmountsOut, userData, false);
+            bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
+
             if (_gainA > 0) {
-                bpt.exitswapExternAmountOut(address(tokenA), _gainA, balanceOfBpt());
                 tokenA.transfer(address(providerA), looseBalanceA().sub(_looseABefore));
             }
 
             if (_gainB > 0) {
-                bpt.exitswapExternAmountOut(address(tokenB), _gainB, balanceOfBpt());
                 tokenB.transfer(address(providerB), looseBalanceB().sub(_looseBBefore));
             }
         }
@@ -171,7 +185,7 @@ contract Rebalancer {
     function sellRewards() public onlyAllowed {
         uint256 _rewards = balanceOfReward();
         if (_rewards > 0) {
-            uint256 _rewardsA = _rewards.mul(pool.getNormalizedWeight(address(tokenA))).div(1e18);
+            uint256 _rewardsA = _rewards.mul(currentWeightA()).div(1e18);
             uint256 _rewardsB = _rewards.sub(_rewardsA);
             // TODO migrate to ySwapper when ready
             uniswap.swapExactTokensForTokens(_rewardsA, 0, pathRewardA, address(providerA), now);
@@ -192,7 +206,7 @@ contract Rebalancer {
     function shouldTend() public view returns (bool _shouldTend){
         uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
         uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
-        uint256 _idealAUsd = _debtAUsd.add(_debtBUsd).mul(pool.getNormalizedWeight(address(tokenA))).div(1e18);
+        uint256 _idealAUsd = _debtAUsd.add(_debtBUsd).mul(currentWeightA()).div(1e18);
         uint256 _idealBUsd = _debtAUsd.add(_debtBUsd).sub(_idealAUsd);
 
         // Using arrays otherwise we get "CompilerError: Stack too deep, try removing local variables."
@@ -223,13 +237,13 @@ contract Rebalancer {
             _outDecimals = decimals(tokenA);
         }
 
-        // calculate the actual amount out from trade
-        uint256 _amountOut = pool.calcOutGivenIn(_balanceInOut[0], _weightInOut[0], _balanceInOut[1], _weightInOut[1], _amountIn, 0);
+        // calculate the actual amount out from trade if there were no trading fees
+        uint256 _amountOut = calcOutGivenIn(_balanceInOut[0], _weightInOut[0], _balanceInOut[1], _weightInOut[1], _amountIn, 0);
 
-        // maximum positive slippage for user trading.
+        // maximum positive slippage for user trading. Evaluate that against our fees.
         if (_amountOut > _amountOutIfNoSlippage) {
             uint256 _slippage = _amountOut.sub(_amountOutIfNoSlippage).mul(10 ** _outDecimals).div(_amountOutIfNoSlippage);
-            return _slippage > pool.getSwapFee().sub(params.tendBuffer);
+            return _slippage > lbp.getSwapFeePercentage().sub(tendBuffer);
         } else {
             return false;
         }
@@ -242,13 +256,6 @@ contract Rebalancer {
         tokenA.transferFrom(address(providerA), address(this), providerA.balanceOfWant());
         tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
 
-        uint256[] memory _minAmounts = new uint256[](2);
-        _minAmounts[0] = 0;
-        _minAmounts[1] = 0;
-        uint256 _bpt = balanceOfBpt();
-        if (_bpt > params.seedBptAmount) {
-            bpt.exitPool(_bpt.sub(params.seedBptAmount), _minAmounts);
-        }
 
         uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
         uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
@@ -259,67 +266,34 @@ contract Rebalancer {
         if (_weightA == percent4 || _weightA == percent96) {
             _atWeightLimit = true;
         }
-        uint256 _weightDenormedA = totalDenormWeight.mul(_weightA).div(1e18);
-        uint256 _weightDenormedB = totalDenormWeight.sub(_weightDenormedA);
-        bpt.updateWeight(address(tokenA), _weightDenormedA);
-        bpt.updateWeight(address(tokenB), _weightDenormedB);
-        uint256 _ratioA = looseBalanceA().div(pooledBalanceA());
-        uint256 _ratioB = looseBalanceB().div(pooledBalanceB());
-        uint256 _ratio = Math.min(_ratioA, _ratioB);
-        uint256 _bptOut = bpt.totalSupply().mul(_ratio);
+        uint weightB = 100 * 1e18 - _weightA;
 
-        uint256[] memory _maxAmountIn = new uint256[](2);
-        _maxAmountIn[0] = looseBalanceA();
-        _maxAmountIn[1] = looseBalanceB();
-        _bptOut = _bptOut.mul(params.joinPoolMultiplier).div(100);
-        bpt.joinPool(_bptOut, _maxAmountIn);
+        uint256[] memory maxAmountsIn = new uint256[](2);
+        maxAmountsIn[0] = looseBalanceA();
+        maxAmountsIn[1] = looseBalanceB();
 
-        // when at limit, don't pool in rest of balance since
-        // it'll just create positive slippage opportunities for arbers
-        if (!_atWeightLimit) {
-            _joinPoolSingles();
-        }
-    }
-
-    function _joinPoolSingles() internal {
-        uint8 count;
-        while (count < params.joinPoolMaxTries) {
-            count++;
-            uint256 _looseA = looseBalanceA();
-            uint256 _looseB = looseBalanceB();
-
-            if (_looseA > 0 || _looseB > 0) {
-                if (_looseA > 0) bpt.joinswapExternAmountIn(address(tokenA), Math.min(_looseA, pooledBalanceA() / 2), 0);
-                if (_looseB > 0) bpt.joinswapExternAmountIn(address(tokenB), Math.min(_looseB, pooledBalanceB() / 2), 0);
-            } else {
-                return;
-            }
-        }
+        uint256[] memory amountsIn = new uint256[](2);
+        amountsIn[0] = looseBalanceA();
+        amountsIn[1] = looseBalanceB();
+        bytes memory userData = abi.encode(IBalancerVault.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT, amountsIn, 0);
+        IBalancerVault.JoinPoolRequest memory request = IBalancerVault.JoinPoolRequest(assets(), maxAmountsIn, userData, false);
+        bVault.joinPool(lbp.getPoolId(), address(this), address(this), request);
     }
 
     function liquidatePosition(uint256 _amountNeeded, IERC20 _token, address _to) public onlyAllowed returns (uint256 _liquidated, uint256 _short){
-        require(_to == address(providerA) || _to == address(providerB));
+        uint index = tokenIndex(_token);
         uint256 _loose = _token.balanceOf(address(this));
 
         if (_amountNeeded > _loose) {
-            uint256 _amountNeededMore = _amountNeeded.sub(_loose);
-            uint256 _pooled = pool.getBalance(address(_token));
-            uint256[] memory _minAmountsOut = new uint256[](2);
-            uint256 _bptTotal = balanceOfBpt();
-            _minAmountsOut[0] = 0;
-            _minAmountsOut[1] = 0;
-            uint256 _percentBptNeeded = _amountNeededMore.mul(10 ** decimals(_token)).div(_pooled);
-            uint256 _bptNeeded = _bptTotal.mul(_percentBptNeeded).div(1e18);
+            uint256 _pooled = pooledBalance(index);
+            uint256 _amountNeededMore = Math.min(_amountNeeded.sub(_loose), _pooled);
 
-            // Withdraw a little more than needed since pool exits a little short sometimes.
-            // This is harmless, as any extras will just be redeposited
-            _bptNeeded = _bptNeeded.mul(params.exitPoolMultiplier).div(1000);
-
-            uint256 _bptOut = Math.min(_bptNeeded, _bptTotal.sub(params.seedBptAmount));
-            if (_bptOut > 0) {
-                bpt.exitPool(_bptOut, _minAmountsOut);
-                _liquidated = Math.min(_amountNeeded, _token.balanceOf(address(this)));
-            }
+            uint256[] memory amountsOut = new uint256[](2);
+            amountsOut[index] = _amountNeededMore;
+            bytes memory userData = abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp());
+            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets(), minAmountsOut, userData, false);
+            bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
+            _liquidated = Math.min(_amountNeeded, _token.balanceOf(address(this)));
         } else {
             _liquidated = _amountNeeded;
         }
@@ -328,16 +302,13 @@ contract Rebalancer {
         _short = _amountNeeded.sub(_liquidated);
     }
 
-    function liquidateAllPositions(IERC20 _token, address _to) public onlyAllowed returns (uint256 _liquidatedAmount){
-        require(_to == address(providerA) || _to == address(providerB));
-        uint256[] memory _minAmountsOut = new uint256[](2);
-        // tolerance can be tweaked
-        _minAmountsOut[0] = pooledBalanceA().mul(99).div(100);
-        _minAmountsOut[1] = pooledBalanceB().mul(99).div(100);
-        uint256 _bptOut = bpt.balanceOf(address(this)).sub(params.seedBptAmount);
-        if (_bptOut > 0) {
-            bpt.exitPool(_bptOut, _minAmountsOut);
-            evenOut();
+    function liquidateAllPositions(IERC20 _token, address _to) public toOnlyAllowed(_to) onlyAllowed returns (uint256 _liquidatedAmount){
+        uint256 lbpBalance = balanceOfLbp();
+        if (lbpBalance > 0) {
+            // exit entire position
+            bytes memory userData = abi.encode(IBalancerVault.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, lbpBalance);
+            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets(), minAmountsOut, userData, false);
+            bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
         }
         _liquidatedAmount = _token.balanceOf(address(this));
         _token.transfer(_to, _liquidatedAmount);
@@ -370,16 +341,17 @@ contract Rebalancer {
     // Helpers //
 
     function _setProviders(address _providerA, address _providerB) internal {
+        IERC20[] memory tokens = tokens();
         providerA = JointProvider(_providerA);
-        require(pool.getCurrentTokens()[0] == address(providerA.want()));
+        require(tokens[0] == providerA.want());
         tokenA = providerA.want();
-        tokenA.approve(address(bpt), max);
+        tokenA.approve(address(bVault), max);
         tokenA.approve(address(uniswap), max);
 
         providerB = JointProvider(_providerB);
-        require(pool.getCurrentTokens()[1] == address(providerB.want()));
+        require(tokens[1] == providerB.want());
         tokenB = providerB.want();
-        tokenB.approve(address(bpt), max);
+        tokenB.approve(address(bVault), max);
         tokenB.approve(address(uniswap), max);
 
         if (address(tokenA) == address(weth) || address(tokenB) == address(weth)) {
@@ -418,30 +390,17 @@ contract Rebalancer {
         }
     }
 
-    // WARNING: IRREVERSIBLE OPERATION
-    // Relinquishing controller right will lose control over pool actions
-    function setController(address _controller) external onlyGov {
-        bpt.setController(_controller);
-    }
-
     function setSwapFee(uint256 _fee) external onlyAuthorized {
-        bpt.setSwapFee(_fee);
+        lbp.setSwapFeePercentage(_fee);
     }
 
-    function setPublicSwap(bool _isPublic) external onlyAuthorized {
-        bpt.setPublicSwap(_isPublic);
+    function setPublicSwap(bool _isPublic) external onlyGov {
+        lbp.setSwapEnabled(_isPublic);
     }
 
-    function whitelistLiquidityProvider(address _lp) external onlyGov {
-        bpt.whitelistLiquidityProvider(_lp);
-    }
-
-    function removeWhitelistedLiquidityProvider(address _lp) external onlyGov {
-        bpt.removeWhitelistedLiquidityProvider(_lp);
-    }
-
-    function setRebalancerParams(RebalancerParams memory _params) external onlyAuthorized {
-        params = _params;
+    function setTendBuffer(uint _newBuffer) external onlyAuthorized {
+        require(_newBuffer < lbp.getSwapFeePercentage());
+        tendBuffer = _newBuffer;
     }
 
     //  called by providers
@@ -457,8 +416,8 @@ contract Rebalancer {
     }
 
     //  updates providers
-    function migrateRebalancer(address _newRebalancer) external onlyGov {
-        bpt.transfer(_newRebalancer, balanceOfBpt());
+    function migrateRebalancer(address payable _newRebalancer) external onlyGov {
+        lbp.transfer(_newRebalancer, balanceOfLbp());
         providerA.migrateRebalancer(_newRebalancer);
         providerB.migrateRebalancer(_newRebalancer);
     }
@@ -481,8 +440,8 @@ contract Rebalancer {
         return reward.balanceOf(address(this));
     }
 
-    function balanceOfBpt() public view returns (uint256) {
-        return bpt.balanceOf(address(this));
+    function balanceOfLbp() public view returns (uint256) {
+        return lbp.balanceOf(address(this));
     }
 
     function looseBalanceA() public view returns (uint256) {
@@ -494,29 +453,79 @@ contract Rebalancer {
     }
 
     function pooledBalanceA() public view returns (uint256) {
-        return pool.getBalance(address(tokenA));
+        return pooledBalance(0);
     }
 
     function pooledBalanceB() public view returns (uint256) {
-        return pool.getBalance(address(tokenB));
+        return pooledBalance(1);
     }
 
-    function balanceOf(IERC20 _token) public view returns (uint256){
-        uint256 _pooled = pool.getBalance(address(_token));
+    function pooledBalance(uint index) public view returns (uint256) {
+        (,uint[] memory balances,) = bVault.getPoolTokens(lbp.getPoolId());
+        return balances[index];
+    }
+
+    function totalBalanceOf(IERC20 _token) public view returns (uint256){
+        uint256 _pooled = pooledBalance(tokenIndex(_token));
         uint256 _loose = _token.balanceOf(address(this));
         return _pooled.add(_loose);
     }
 
     function currentWeightA() public view returns (uint256) {
-        return pool.getDenormalizedWeight(address(tokenA));
+        return lbp.getNormalizedWeights()[0];
     }
 
     function currentWeightB() public view returns (uint256) {
-        return pool.getDenormalizedWeight(address(tokenB));
+        return lbp.getNormalizedWeights()[1];
     }
 
     function decimals(IERC20 _token) internal view returns (uint _decimals){
         return ERC20(address(_token)).decimals();
     }
+
+    function tokens() public view returns (IERC20[] memory _tokens){
+        (_tokens,,) = bVault.getPoolTokens(lbp.getPoolId());
+    }
+
+    function assets() public view returns (IAsset[] memory _assets){
+        IERC20[] memory _tokens = tokens();
+        for (uint i = 0; i < _tokens.length; i++) {
+            _assets[i] = IAsset(address(_tokens[i]));
+        }
+        return _assets;
+    }
+
+    function tokenIndex(IERC20 _token) public view returns (uint _tokenIndex){
+        IERC20[] memory t = tokens();
+        if (t[0] == _token) {
+            _tokenIndex = 0;
+        } else if (t[1] == _token) {
+            _tokenIndex = 1;
+        } else {
+            revert();
+        }
+        return _tokenIndex;
+    }
+
+    function calcOutGivenIn(
+        uint tokenBalanceIn,
+        uint tokenWeightIn,
+        uint tokenBalanceOut,
+        uint tokenWeightOut,
+        uint tokenAmountIn,
+        uint swapFee
+    ) public pure returns (uint tokenAmountOut){
+        //        uint weightRatio = bdiv(tokenWeightIn, tokenWeightOut);
+        //        uint adjustedIn = bsub(BONE, swapFee);
+        //        adjustedIn = bmul(tokenAmountIn, adjustedIn);
+        //        uint y = bdiv(tokenBalanceIn, badd(tokenBalanceIn, adjustedIn));
+        //        uint foo = bpow(y, weightRatio);
+        //        uint bar = bsub(1e18, foo);
+        //        tokenAmountOut = bmul(tokenBalanceOut, bar);
+        //        return tokenAmountOut;
+        return 0;
+    }
+
+    receive() external payable {}
 }
 
