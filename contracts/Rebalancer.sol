@@ -34,6 +34,7 @@ contract Rebalancer {
     ILiquidityBootstrappingPoolFactory public lbpFactory;
     ILiquidityBootstrappingPool public lbp;
     IBalancerVault public bVault;
+    IAsset[] public assets;
 
     address[] private pathAB;
     address[] private pathBA;
@@ -43,11 +44,10 @@ contract Rebalancer {
     address[] private pathWethB;
     uint256[] private minAmountsOut;
 
+
     // This is a negligible amount of asset (~$4 = 100 bpt) donated by the strategist to initialize the balancer pool
     // This amount is always kept in the pool to aid in rebalancing and also prevent pool from ever being fully empty
     uint256 constant private max = type(uint256).max;
-    uint256 constant private percent4 = 0.04 * 1e18;
-    uint256 constant private percent96 = 0.96 * 1e18;
     bool internal isOriginal = true;
     uint public tendBuffer;
 
@@ -94,19 +94,20 @@ contract Rebalancer {
         uniswap = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
+
         minAmountsOut = new uint256[](2);
         tendBuffer = 0.001 * 1e18;
 
-        lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
         _setProviders(_providerA, _providerB);
 
         IERC20[] memory tokens = new IERC20[](2);
         tokens[0] = tokenA;
         tokens[1] = tokenB;
         uint[] memory initialWeights = new uint[](2);
-        initialWeights[0] = uint(50 * 1e18);
-        initialWeights[1] = uint(50 * 1e18);
+        initialWeights[0] = uint(0.5 * 1e18);
+        initialWeights[1] = uint(0.5 * 1e18);
 
+        lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
         lbp = ILiquidityBootstrappingPool(
             lbpFactory.create(
                 "YFI-WETH Pool", "YFI-WETH yBPT",
@@ -116,6 +117,11 @@ contract Rebalancer {
                 address(this),
                 true)
         );
+        bVault = IBalancerVault(lbp.getVault());
+        tokenA.approve(address(bVault), max);
+        tokenB.approve(address(bVault), max);
+
+        assets = [IAsset(address(tokenA)), IAsset(address(tokenB))];
     }
 
     event Cloned(address indexed clone);
@@ -168,7 +174,7 @@ contract Rebalancer {
             amountsOut[0] = _gainA;
             amountsOut[1] = _gainB;
             bytes memory userData = abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp());
-            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets(), minAmountsOut, userData, false);
+            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, userData, false);
             bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
 
             if (_gainA > 0) {
@@ -257,16 +263,15 @@ contract Rebalancer {
         tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
 
 
-        uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
-        uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
-        uint256 _debtTotalUsd = _debtAUsd.add(_debtBUsd);
-        bool _atWeightLimit;
+        uint256 debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
+        uint256 debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        uint256 debtTotalUsd = debtAUsd.add(debtBUsd);
 
-        uint256 _weightA = Math.max(Math.min(_debtAUsd.mul(1e18).div(_debtTotalUsd), percent96), percent4);
-        if (_weightA == percent4 || _weightA == percent96) {
-            _atWeightLimit = true;
-        }
-        uint weightB = 100 * 1e18 - _weightA;
+        uint[] memory newWeights = new uint[](2);
+        newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), 0.96 * 1e18), 0.04 * 1e18);
+        newWeights[1] = 1e18 - newWeights[0];
+
+        lbp.updateWeightsGradually(now, now, newWeights);
 
         uint256[] memory maxAmountsIn = new uint256[](2);
         maxAmountsIn[0] = looseBalanceA();
@@ -275,9 +280,15 @@ contract Rebalancer {
         uint256[] memory amountsIn = new uint256[](2);
         amountsIn[0] = looseBalanceA();
         amountsIn[1] = looseBalanceB();
-        bytes memory userData = abi.encode(IBalancerVault.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT, amountsIn, 0);
-        IBalancerVault.JoinPoolRequest memory request = IBalancerVault.JoinPoolRequest(assets(), maxAmountsIn, userData, false);
+        bytes memory userData;
+        if (balanceOfLbp() > 0) {
+            userData = abi.encode(IBalancerVault.JoinKind.EXACT_TOKENS_IN_FOR_BPT_OUT, amountsIn, 0);
+        } else {
+            userData = abi.encode(IBalancerVault.JoinKind.INIT, amountsIn);
+        }
+        IBalancerVault.JoinPoolRequest memory request = IBalancerVault.JoinPoolRequest(assets, maxAmountsIn, userData, false);
         bVault.joinPool(lbp.getPoolId(), address(this), address(this), request);
+
     }
 
     function liquidatePosition(uint256 _amountNeeded, IERC20 _token, address _to) public onlyAllowed returns (uint256 _liquidated, uint256 _short){
@@ -291,7 +302,7 @@ contract Rebalancer {
             uint256[] memory amountsOut = new uint256[](2);
             amountsOut[index] = _amountNeededMore;
             bytes memory userData = abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp());
-            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets(), minAmountsOut, userData, false);
+            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, userData, false);
             bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
             _liquidated = Math.min(_amountNeeded, _token.balanceOf(address(this)));
         } else {
@@ -307,7 +318,7 @@ contract Rebalancer {
         if (lbpBalance > 0) {
             // exit entire position
             bytes memory userData = abi.encode(IBalancerVault.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, lbpBalance);
-            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets(), minAmountsOut, userData, false);
+            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, userData, false);
             bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
         }
         _liquidatedAmount = _token.balanceOf(address(this));
@@ -341,17 +352,12 @@ contract Rebalancer {
     // Helpers //
 
     function _setProviders(address _providerA, address _providerB) internal {
-        IERC20[] memory tokens = tokens();
         providerA = JointProvider(_providerA);
-        require(tokens[0] == providerA.want());
-        tokenA = providerA.want();
-        tokenA.approve(address(bVault), max);
-        tokenA.approve(address(uniswap), max);
-
         providerB = JointProvider(_providerB);
-        require(tokens[1] == providerB.want());
+        tokenA = providerA.want();
         tokenB = providerB.want();
-        tokenB.approve(address(bVault), max);
+
+        tokenA.approve(address(uniswap), max);
         tokenB.approve(address(uniswap), max);
 
         if (address(tokenA) == address(weth) || address(tokenB) == address(weth)) {
@@ -487,13 +493,6 @@ contract Rebalancer {
         (_tokens,,) = bVault.getPoolTokens(lbp.getPoolId());
     }
 
-    function assets() public view returns (IAsset[] memory _assets){
-        IERC20[] memory _tokens = tokens();
-        for (uint i = 0; i < _tokens.length; i++) {
-            _assets[i] = IAsset(address(_tokens[i]));
-        }
-        return _assets;
-    }
 
     function tokenIndex(IERC20 _token) public view returns (uint _tokenIndex){
         IERC20[] memory t = tokens();

@@ -40,8 +40,7 @@ def test_set_reward(providerA, providerB, tokenA, tokenB, amountA, amountB, vaul
     assert vaultB.pricePerShare() > ppsBeforeB
 
 
-def test_set_controller(rebalancer, gov, setup, RELATIVE_APPROX, testSetup, owner, rando):
-    rebalancer.setController(owner, {'from': gov})
+def test_set_controller(rebalancer, gov, setup, RELATIVE_APPROX, testSetup, rando):
 
     with brownie.reverts():
         rebalancer.setController(rebalancer, {'from': gov})

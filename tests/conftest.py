@@ -161,20 +161,20 @@ def vaultB(pm, gov, rewards, guardian, management, tokenB):
 
 
 @pytest.fixture
-def bpt():
-    bpt = Contract("0xfA00D65F0873059d2858f1CF7e9a0822754418dd")
-    yield bpt
+def lbpFactory():
+    lbpFactory = Contract("0x751A0bC0e3f75b38e01Cf25bFCE7fF36DE1C87DE")
+    yield lbpFactory
 
 
 @pytest.fixture
-def rebalancer(strategist, bpt, Rebalancer, providerA, providerB, gov):
-    rebalancer = strategist.deploy(Rebalancer, providerA, providerB, gov, strategist, bpt)
+def rebalancer(strategist, Rebalancer, providerA, providerB, lbpFactory):
+    rebalancer = strategist.deploy(Rebalancer, providerA, providerB, lbpFactory)
     yield rebalancer
 
 
 @pytest.fixture
-def rebalancerTestOracle(strategist, bpt, Rebalancer, providerATestOracle, providerBTestOracle, gov):
-    rebalancer = strategist.deploy(Rebalancer, providerATestOracle, providerBTestOracle, gov, strategist, bpt)
+def rebalancerTestOracle(strategist, Rebalancer, providerATestOracle, providerBTestOracle, lbpFactory):
+    rebalancer = strategist.deploy(Rebalancer, providerATestOracle, providerBTestOracle, lbpFactory)
     yield rebalancer
 
 
@@ -228,16 +228,6 @@ def testOracleB(TestOracle, strategist):
 
 
 @pytest.fixture
-def owner(accounts):
-    yield accounts.at("0x1F93b58fb2cF33CfB68E73E94aD6dD7829b1586D", force=True)
-
-
-@pytest.fixture
-def pool(rebalancer):
-    yield Contract(rebalancer.pool())
-
-
-@pytest.fixture
 def crv():
     yield Contract("0xD533a949740bb3306d119CC777fa900bA034cd52")
 
@@ -259,26 +249,20 @@ def reward_whale(accounts):
 
 
 @pytest.fixture
-def setup(rebalancer, providerA, providerB, gov, bpt, owner, user, strategist):
-    providerA.setRebalancer(rebalancer, {'from': owner})
-    providerB.setRebalancer(rebalancer, {'from': owner})
-
-    # send all seed funds from me to strat
-    bpt.transfer(rebalancer, bpt.balanceOf(owner), {'from': owner})
+def setup(rebalancer, providerA, providerB, gov, user, strategist):
+    providerA.setRebalancer(rebalancer, {'from': gov})
+    providerB.setRebalancer(rebalancer, {'from': gov})
 
     # 0.3%
     rebalancer.setSwapFee(0.003 * 1e18, {'from': strategist})
 
 
 @pytest.fixture
-def setupTestOracle(rebalancerTestOracle, providerATestOracle, providerBTestOracle, gov, bpt, owner, user, strategist):
-    providerATestOracle.setRebalancer(rebalancerTestOracle, {'from': owner})
-    providerBTestOracle.setRebalancer(rebalancerTestOracle, {'from': owner})
+def setupTestOracle(rebalancerTestOracle, providerATestOracle, providerBTestOracle, gov, user, strategist):
+    providerATestOracle.setRebalancer(rebalancerTestOracle, {'from': gov})
+    providerBTestOracle.setRebalancer(rebalancerTestOracle, {'from': gov})
 
-    bpt.transfer(rebalancerTestOracle, bpt.balanceOf(owner), {'from': owner})
-    bpt.setController(rebalancerTestOracle, {'from': owner})
-    rebalancerTestOracle.whitelistLiquidityProvider(rebalancerTestOracle, {'from': strategist})
-    rebalancerTestOracle.setSwapFee(30 * 1e14, {'from': strategist})
+    rebalancerTestOracle.setSwapFee(0.003 * 1e18, {'from': strategist})
 
 
 @pytest.fixture
