@@ -22,7 +22,7 @@ interface ISymbol {
 contract Rebalancer {
     using SafeERC20 for IERC20;
     using Address for address;
-    using SafeMath for uint256;
+    using SafeMath for uint;
 
     IERC20 public reward;
     IERC20 public tokenA;
@@ -42,12 +42,12 @@ contract Rebalancer {
     address[] private pathRewardB;
     address[] private pathWethA;
     address[] private pathWethB;
-    uint256[] private minAmountsOut;
+    uint[] private minAmountsOut;
 
 
     // This is a negligible amount of asset (~$4 = 100 bpt) donated by the strategist to initialize the balancer pool
     // This amount is always kept in the pool to aid in rebalancing and also prevent pool from ever being fully empty
-    uint256 constant private max = type(uint256).max;
+    uint constant private max = type(uint).max;
     bool internal isOriginal = true;
     uint public tendBuffer;
 
@@ -58,6 +58,7 @@ contract Rebalancer {
             _to == providerA.getGovernance(), "!allowed");
         _;
     }
+
     modifier onlyAllowed{
         require(
             msg.sender == address(providerA) ||
@@ -95,7 +96,7 @@ contract Rebalancer {
         reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
         reward.approve(address(uniswap), max);
 
-        minAmountsOut = new uint256[](2);
+        minAmountsOut = new uint[](2);
         tendBuffer = 0.001 * 1e18;
 
         _setProviders(_providerA, _providerB);
@@ -154,28 +155,26 @@ contract Rebalancer {
 
     // collect profit from trading fees
     function collectTradingFees() public onlyAllowed {
-        uint256 _debtA = providerA.totalDebt();
-        uint256 _debtB = providerB.totalDebt();
+        uint _debtA = providerA.totalDebt();
+        uint _debtB = providerB.totalDebt();
 
         if (_debtA == 0 || _debtB == 0) return;
 
-        uint256 _pooledA = pooledBalanceA();
-        uint256 _pooledB = pooledBalanceB();
-        uint256 _lbpTotal = balanceOfLbp();
+        uint _pooledA = pooledBalanceA();
+        uint _pooledB = pooledBalanceB();
+        uint _lbpTotal = balanceOfLbp();
 
         // there's profit
         if (_pooledA >= _debtA && _pooledB >= _debtB) {
-            uint256 _gainA = _pooledA.sub(_debtA);
-            uint256 _gainB = _pooledB.sub(_debtB);
-            uint256 _looseABefore = looseBalanceA();
-            uint256 _looseBBefore = looseBalanceB();
+            uint _gainA = _pooledA.sub(_debtA);
+            uint _gainB = _pooledB.sub(_debtB);
+            uint _looseABefore = looseBalanceA();
+            uint _looseBBefore = looseBalanceB();
 
-            uint256[] memory amountsOut = new uint256[](2);
+            uint[] memory amountsOut = new uint[](2);
             amountsOut[0] = _gainA;
             amountsOut[1] = _gainB;
-            bytes memory userData = abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp());
-            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, userData, false);
-            bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
+            _exitPool(abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp()));
 
             if (_gainA > 0) {
                 tokenA.transfer(address(providerA), looseBalanceA().sub(_looseABefore));
@@ -189,10 +188,10 @@ contract Rebalancer {
 
     // sell reward and distribute evenly to each provider
     function sellRewards() public onlyAllowed {
-        uint256 _rewards = balanceOfReward();
+        uint _rewards = balanceOfReward();
         if (_rewards > 0) {
-            uint256 _rewardsA = _rewards.mul(currentWeightA()).div(1e18);
-            uint256 _rewardsB = _rewards.sub(_rewardsA);
+            uint _rewardsA = _rewards.mul(currentWeightA()).div(1e18);
+            uint _rewardsB = _rewards.sub(_rewardsA);
             // TODO migrate to ySwapper when ready
             uniswap.swapExactTokensForTokens(_rewardsA, 0, pathRewardA, address(providerA), now);
             uniswap.swapExactTokensForTokens(_rewardsB, 0, pathRewardB, address(providerB), now);
@@ -200,56 +199,40 @@ contract Rebalancer {
     }
 
     function shouldHarvest() public view returns (bool _shouldHarvest){
-        uint256 _debtA = providerA.totalDebt();
-        uint256 _debtB = providerB.totalDebt();
-        uint256 _pooledA = pooledBalanceA();
-        uint256 _pooledB = pooledBalanceB();
+        uint _debtA = providerA.totalDebt();
+        uint _debtB = providerB.totalDebt();
+        uint _pooledA = pooledBalanceA();
+        uint _pooledB = pooledBalanceB();
         return (_pooledA >= _debtA && _pooledB > _debtB) || (_pooledA > _debtA && _pooledB >= _debtB);
     }
 
     // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage
     // since positive slippage for user = negative slippage for pool aka loss for strat
     function shouldTend() public view returns (bool _shouldTend){
-        uint256 _debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
-        uint256 _debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
-        uint256 _idealAUsd = _debtAUsd.add(_debtBUsd).mul(currentWeightA()).div(1e18);
-        uint256 _idealBUsd = _debtAUsd.add(_debtBUsd).sub(_idealAUsd);
+        uint debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
+        uint debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        uint idealAUsd = debtAUsd.add(debtBUsd).mul(currentWeightA()).div(1e18);
+        uint idealBUsd = debtAUsd.add(debtBUsd).sub(idealAUsd);
 
-        // Using arrays otherwise we get "CompilerError: Stack too deep, try removing local variables."
-        uint256[] memory _balanceInOut = new uint256[](2);
-        uint256[] memory _weightInOut = new uint256[](2);
-        uint256 _amountIn;
-        uint256 _amountOutIfNoSlippage;
-        uint256 _outDecimals;
-
-        if (_idealAUsd > _debtAUsd) {
-            // if value of A is lower, users are incentivized to trade in A for B to make pool evenly balanced
-            _weightInOut[0] = currentWeightA();
-            _weightInOut[1] = currentWeightB();
-            _balanceInOut[0] = pooledBalanceA();
-            _balanceInOut[1] = pooledBalanceB();
-            _amountIn = _idealAUsd.sub(_debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
-            _amountOutIfNoSlippage = _debtBUsd.sub(_idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
-            _outDecimals = decimals(tokenB);
-
-        } else {
-            // if value of B is lower, users are incentivized to trade in B for A to make pool evenly balanced
-            _weightInOut[0] = currentWeightB();
-            _weightInOut[1] = currentWeightA();
-            _balanceInOut[0] = pooledBalanceB();
-            _balanceInOut[1] = pooledBalanceA();
-            _amountIn = _idealBUsd.sub(_debtBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
-            _amountOutIfNoSlippage = _debtAUsd.sub(_idealAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
-            _outDecimals = decimals(tokenA);
-        }
+        uint weightIn = idealAUsd > debtAUsd ? currentWeightA() : currentWeightB();
+        uint weightOut = idealAUsd > debtAUsd ? currentWeightB() : currentWeightA();
+        uint balanceIn = idealAUsd > debtAUsd ? pooledBalanceA() : pooledBalanceB();
+        uint balanceOut = idealAUsd > debtAUsd ? pooledBalanceB() : pooledBalanceA();
+        uint amountIn = idealAUsd > debtAUsd
+        ? idealAUsd.sub(debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed())
+        : idealBUsd.sub(debtBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
+        uint amountOutIfNoSlippage = idealAUsd > debtAUsd
+        ? debtBUsd.sub(idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed())
+        : debtAUsd.sub(idealAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
+        uint outDecimals = idealAUsd > debtAUsd ? decimals(tokenB) : decimals(tokenA);
 
         // calculate the actual amount out from trade if there were no trading fees
-        uint256 _amountOut = calcOutGivenIn(_balanceInOut[0], _weightInOut[0], _balanceInOut[1], _weightInOut[1], _amountIn, 0);
+        uint amountOut = calcOutGivenIn(balanceIn, weightIn, balanceOut, weightOut, amountIn, 0);
 
         // maximum positive slippage for user trading. Evaluate that against our fees.
-        if (_amountOut > _amountOutIfNoSlippage) {
-            uint256 _slippage = _amountOut.sub(_amountOutIfNoSlippage).mul(10 ** _outDecimals).div(_amountOutIfNoSlippage);
-            return _slippage > lbp.getSwapFeePercentage().sub(tendBuffer);
+        if (amountOut > amountOutIfNoSlippage) {
+            uint slippage = amountOut.sub(amountOutIfNoSlippage).mul(10 ** outDecimals).div(amountOutIfNoSlippage);
+            return slippage > lbp.getSwapFeePercentage().sub(tendBuffer);
         } else {
             return false;
         }
@@ -263,9 +246,9 @@ contract Rebalancer {
         tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
 
 
-        uint256 debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
-        uint256 debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
-        uint256 debtTotalUsd = debtAUsd.add(debtBUsd);
+        uint debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
+        uint debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        uint debtTotalUsd = debtAUsd.add(debtBUsd);
 
         uint[] memory newWeights = new uint[](2);
         newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), 0.96 * 1e18), 0.04 * 1e18);
@@ -273,11 +256,11 @@ contract Rebalancer {
 
         lbp.updateWeightsGradually(now, now, newWeights);
 
-        uint256[] memory maxAmountsIn = new uint256[](2);
+        uint[] memory maxAmountsIn = new uint[](2);
         maxAmountsIn[0] = looseBalanceA();
         maxAmountsIn[1] = looseBalanceB();
 
-        uint256[] memory amountsIn = new uint256[](2);
+        uint[] memory amountsIn = new uint[](2);
         amountsIn[0] = looseBalanceA();
         amountsIn[1] = looseBalanceB();
         bytes memory userData;
@@ -291,19 +274,17 @@ contract Rebalancer {
 
     }
 
-    function liquidatePosition(uint256 _amountNeeded, IERC20 _token, address _to) public onlyAllowed returns (uint256 _liquidated, uint256 _short){
+    function liquidatePosition(uint _amountNeeded, IERC20 _token, address _to) public toOnlyAllowed(_to) onlyAllowed returns (uint _liquidated, uint _short){
         uint index = tokenIndex(_token);
-        uint256 _loose = _token.balanceOf(address(this));
+        uint _loose = _token.balanceOf(address(this));
 
         if (_amountNeeded > _loose) {
-            uint256 _pooled = pooledBalance(index);
-            uint256 _amountNeededMore = Math.min(_amountNeeded.sub(_loose), _pooled);
+            uint _pooled = pooledBalance(index);
+            uint _amountNeededMore = Math.min(_amountNeeded.sub(_loose), _pooled);
 
-            uint256[] memory amountsOut = new uint256[](2);
+            uint[] memory amountsOut = new uint[](2);
             amountsOut[index] = _amountNeededMore;
-            bytes memory userData = abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp());
-            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, userData, false);
-            bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
+            _exitPool(abi.encode(IBalancerVault.ExitKind.BPT_IN_FOR_EXACT_TOKENS_OUT, amountsOut, balanceOfLbp()));
             _liquidated = Math.min(_amountNeeded, _token.balanceOf(address(this)));
         } else {
             _liquidated = _amountNeeded;
@@ -313,13 +294,11 @@ contract Rebalancer {
         _short = _amountNeeded.sub(_liquidated);
     }
 
-    function liquidateAllPositions(IERC20 _token, address _to) public toOnlyAllowed(_to) onlyAllowed returns (uint256 _liquidatedAmount){
-        uint256 lbpBalance = balanceOfLbp();
+    function liquidateAllPositions(IERC20 _token, address _to) public toOnlyAllowed(_to) onlyAllowed returns (uint _liquidatedAmount){
+        uint lbpBalance = balanceOfLbp();
         if (lbpBalance > 0) {
             // exit entire position
-            bytes memory userData = abi.encode(IBalancerVault.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, lbpBalance);
-            IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, userData, false);
-            bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
+            _exitPool(abi.encode(IBalancerVault.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, lbpBalance));
         }
         _liquidatedAmount = _token.balanceOf(address(this));
         _token.transfer(_to, _liquidatedAmount);
@@ -327,11 +306,11 @@ contract Rebalancer {
 
     // only applicable when pool is skewed and strat wants to completely pull out. Sells one token for another
     function evenOut() public onlyAllowed {
-        uint256 _looseA = looseBalanceA();
-        uint256 _looseB = looseBalanceB();
-        uint256 _debtA = providerA.totalDebt();
-        uint256 _debtB = providerB.totalDebt();
-        uint256 _amount;
+        uint _looseA = looseBalanceA();
+        uint _looseB = looseBalanceB();
+        uint _debtA = providerA.totalDebt();
+        uint _debtB = providerB.totalDebt();
+        uint _amount;
         address[] memory path;
 
         if (_looseA > _debtA && _looseB < _debtB) {
@@ -350,6 +329,10 @@ contract Rebalancer {
 
 
     // Helpers //
+    function _exitPool(bytes memory _userData) internal {
+        IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, _userData, false);
+        bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
+    }
 
     function _setProviders(address _providerA, address _providerB) internal {
         providerA = JointProvider(_providerA);
@@ -396,7 +379,7 @@ contract Rebalancer {
         }
     }
 
-    function setSwapFee(uint256 _fee) external onlyAuthorized {
+    function setSwapFee(uint _fee) external onlyAuthorized {
         lbp.setSwapFeePercentage(_fee);
     }
 
@@ -421,15 +404,8 @@ contract Rebalancer {
         }
     }
 
-    //  updates providers
-    function migrateRebalancer(address payable _newRebalancer) external onlyGov {
-        lbp.transfer(_newRebalancer, balanceOfLbp());
-        providerA.migrateRebalancer(_newRebalancer);
-        providerB.migrateRebalancer(_newRebalancer);
-    }
-
     // TODO switch to ySwapper when ready
-    function ethToWant(address _want, uint256 _amtInWei) external view returns (uint256 _wantAmount){
+    function ethToWant(address _want, uint _amtInWei) external view returns (uint _wantAmount){
         if (_amtInWei > 0) {
             address[] memory path = new address[](2);
             if (_want == address(weth)) {
@@ -439,49 +415,51 @@ contract Rebalancer {
                 path[1] = _want;
             }
             return uniswap.getAmountsOut(_amtInWei, path)[1];
+        } else {
+            return 0;
         }
     }
 
-    function balanceOfReward() public view returns (uint256){
+    function balanceOfReward() public view returns (uint){
         return reward.balanceOf(address(this));
     }
 
-    function balanceOfLbp() public view returns (uint256) {
+    function balanceOfLbp() public view returns (uint) {
         return lbp.balanceOf(address(this));
     }
 
-    function looseBalanceA() public view returns (uint256) {
+    function looseBalanceA() public view returns (uint) {
         return tokenA.balanceOf(address(this));
     }
 
-    function looseBalanceB() public view returns (uint256) {
+    function looseBalanceB() public view returns (uint) {
         return tokenB.balanceOf(address(this));
     }
 
-    function pooledBalanceA() public view returns (uint256) {
+    function pooledBalanceA() public view returns (uint) {
         return pooledBalance(0);
     }
 
-    function pooledBalanceB() public view returns (uint256) {
+    function pooledBalanceB() public view returns (uint) {
         return pooledBalance(1);
     }
 
-    function pooledBalance(uint index) public view returns (uint256) {
+    function pooledBalance(uint index) public view returns (uint) {
         (,uint[] memory balances,) = bVault.getPoolTokens(lbp.getPoolId());
         return balances[index];
     }
 
-    function totalBalanceOf(IERC20 _token) public view returns (uint256){
-        uint256 _pooled = pooledBalance(tokenIndex(_token));
-        uint256 _loose = _token.balanceOf(address(this));
+    function totalBalanceOf(IERC20 _token) public view returns (uint){
+        uint _pooled = pooledBalance(tokenIndex(_token));
+        uint _loose = _token.balanceOf(address(this));
         return _pooled.add(_loose);
     }
 
-    function currentWeightA() public view returns (uint256) {
+    function currentWeightA() public view returns (uint) {
         return lbp.getNormalizedWeights()[0];
     }
 
-    function currentWeightB() public view returns (uint256) {
+    function currentWeightB() public view returns (uint) {
         return lbp.getNormalizedWeights()[1];
     }
 
@@ -489,13 +467,8 @@ contract Rebalancer {
         return ERC20(address(_token)).decimals();
     }
 
-    function tokens() public view returns (IERC20[] memory _tokens){
-        (_tokens,,) = bVault.getPoolTokens(lbp.getPoolId());
-    }
-
-
     function tokenIndex(IERC20 _token) public view returns (uint _tokenIndex){
-        IERC20[] memory t = tokens();
+        (IERC20[] memory t,,) = bVault.getPoolTokens(lbp.getPoolId());
         if (t[0] == _token) {
             _tokenIndex = 0;
         } else if (t[1] == _token) {
