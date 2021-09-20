@@ -16,11 +16,11 @@ import "../interfaces/ISymbol.sol";
 contract JointProvider is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
-    using SafeMath for uint256;
+    using SafeMath for uint;
 
     IRebalancer public rebalancer;
     IPriceFeed public oracle;
-    uint256 constant public max = type(uint256).max;
+    uint constant public max = type(uint).max;
     bool internal isOriginal = true;
 
     constructor(address _vault, address _oracle) public BaseStrategy(_vault) {
@@ -40,6 +40,7 @@ contract JointProvider is BaseStrategy {
 
     function _initializeStrat(address _oracle) internal {
         oracle = IPriceFeed(_oracle);
+        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012); // health.ychad.eth
     }
 
     function setRebalancer(address payable _rebalancer) external onlyGovernance {
@@ -93,21 +94,21 @@ contract JointProvider is BaseStrategy {
         }
     }
 
-    function estimatedTotalAssets() public view override returns (uint256) {
+    function estimatedTotalAssets() public view override returns (uint) {
         return want.balanceOf(address(this)).add(rebalancer.totalBalanceOf(want));
     }
 
-    function harvestTrigger(uint256 callCostInWei) public view override returns (bool){
+    function harvestTrigger(uint callCostInWei) public view override returns (bool){
         return super.harvestTrigger(callCostInWei) && rebalancer.shouldHarvest();
     }
 
-    function tendTrigger(uint256 callCostInWei) public view override returns (bool){
+    function tendTrigger(uint callCostInWei) public view override returns (bool){
         return rebalancer.shouldTend();
     }
 
     event Debug(string msg, uint val);
 
-    function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment) {
+    function prepareReturn(uint _debtOutstanding) internal override returns (uint _profit, uint _loss, uint _debtPayment) {
         if (_debtOutstanding > 0) {
             if (vault.strategies(address(this)).debtRatio == 0) {
                 _debtPayment = liquidateAllPositions();
@@ -117,18 +118,18 @@ contract JointProvider is BaseStrategy {
             }
         }
 
-        uint256 beforeWant = balanceOfWant();
+        uint beforeWant = balanceOfWant();
         rebalancer.collectTradingFees();
         rebalancer.sellRewards();
-        uint256 afterWant = balanceOfWant();
+        uint afterWant = balanceOfWant();
 
         _profit = afterWant.sub(beforeWant);
 
-        if (_profit > 0) {
-            uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
-            uint debt = totalDebt();
-            _loss += debt > pooled ? debt.sub(pooled) : 0;
-        }
+//        if (_profit > 0) {
+//            uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
+//            uint debt = totalDebt();
+//            _loss += debt > pooled ? debt.sub(pooled) : 0;
+//        }
 
         if (_profit > _loss) {
             _profit = _profit.sub(_loss);
@@ -137,37 +138,18 @@ contract JointProvider is BaseStrategy {
             _loss = _loss.sub(_profit);
             _profit = 0;
         }
-
-
-        //        if (_after > _before) {
-        //            _profit = _after.sub(_before);
-        //        }
-        //
-        //        if (_debtOutstanding > 0) {
-        //            if (vault.strategies(address(this)).debtRatio == 0) {
-        //                _debtPayment = rebalancer.liquidateAllPositions(want, address(this));
-        //                if (_debtPayment > _debtOutstanding) {
-        //                    _profit.add(_debtPayment.sub(_debtOutstanding));
-        //                    _debtPayment = _debtOutstanding;
-        //                } else {
-        //                    _loss = _debtOutstanding.sub(_debtPayment);
-        //                }
-        //            } else {
-        //                (_debtPayment, _loss) = rebalancer.liquidatePosition(_debtOutstanding, want, address(this));
-        //            }
-        //        }
     }
 
-    function adjustPosition(uint256 _debtOutstanding) internal override {
+    function adjustPosition(uint _debtOutstanding) internal override {
         rebalancer.adjustPosition();
     }
 
-    function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss) {
-        uint256 _loose = balanceOfWant();
+    function liquidatePosition(uint _amountNeeded) internal override returns (uint _liquidatedAmount, uint _loss) {
+        uint loose = balanceOfWant();
         uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
 
-        if (_amountNeeded > _loose) {
-            uint256 _amountNeededMore = _amountNeeded.sub(_loose);
+        if (_amountNeeded > loose) {
+            uint _amountNeededMore = _amountNeeded.sub(loose);
             if (_amountNeededMore >= pooled) {
                 rebalancer.liquidateAllPositions(want, address(this));
             } else {
@@ -181,7 +163,7 @@ contract JointProvider is BaseStrategy {
         }
     }
 
-    function liquidateAllPositions() internal override returns (uint256 _amountFreed) {
+    function liquidateAllPositions() internal override returns (uint _amountFreed) {
         rebalancer.liquidateAllPositions(want, address(this));
         return want.balanceOf(address(this));
     }
@@ -199,27 +181,26 @@ contract JointProvider is BaseStrategy {
         want.approve(_newRebalancer, max);
     }
 
-    function protectedTokens() internal view override returns (address[] memory) {
-    }
+    function protectedTokens() internal view override returns (address[] memory) {}
 
-    function ethToWant(uint256 _amtInWei) public view virtual override returns (uint256) {
+    function ethToWant(uint _amtInWei) public view virtual override returns (uint) {
         return rebalancer.ethToWant(address(want), _amtInWei);
     }
 
     // Helpers //
-    function balanceOfWant() public view returns (uint256 _balance){
+    function balanceOfWant() public view returns (uint _balance){
         return want.balanceOf(address(this));
     }
 
-    function totalDebt() public view returns (uint256 _debt){
+    function totalDebt() public view returns (uint _debt){
         return vault.strategies(address(this)).totalDebt;
     }
 
-    function getPriceFeed() public view returns (uint256 _lastestAnswer){
+    function getPriceFeed() public view returns (uint _lastestAnswer){
         return oracle.latestAnswer();
     }
 
-    function getPriceFeedDecimals() public view returns (uint256 _dec){
+    function getPriceFeedDecimals() public view returns (uint _dec){
         return oracle.decimals();
     }
 

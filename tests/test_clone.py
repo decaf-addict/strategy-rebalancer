@@ -16,7 +16,7 @@ import brownie
 
 
 def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFactory, tokenA, tokenB, providerA,
-                          providerB, strategist, reward, reward_whale, vaultA, vaultB, chain, RELATIVE_APPROX):
+                          providerB, strategist, reward, reward_whale, vaultA, vaultB, chain, RELATIVE_APPROX, user):
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
 
@@ -26,19 +26,24 @@ def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFact
     transaction = rebalancer.cloneRebalancer(providerA, providerB, lbpFactory, {"from": gov})
     cloned_rebalancer = Rebalancer.at(transaction.return_value)
 
-    bpts = rebalancer.balanceOfLbp()
-
-    rebalancer.liquidateAllPositions(tokenA, providerA, {'from': gov})
-    rebalancer.liquidateAllPositions(tokenB, providerB, {'from': gov})
+    vaultA.withdraw({'from': user})
+    vaultB.withdraw({'from': user})
 
     chain.sleep(3600)
     chain.mine(1)
 
     assert rebalancer.balanceOfLbp() == 0
+    util.stateOfStrat("after withdraw all", cloned_rebalancer, providerA, providerB)
 
     # setup
     providerA.setRebalancer(cloned_rebalancer, {'from': gov})
     providerB.setRebalancer(cloned_rebalancer, {'from': gov})
+
+    tokenA.approve(vaultA.address, tokenA.balanceOf(user), {"from": user})
+    tokenB.approve(vaultB.address, tokenB.balanceOf(user), {"from": user})
+
+    vaultA.deposit(tokenA.balanceOf(user), {"from": user})
+    vaultB.deposit(tokenB.balanceOf(user), {"from": user})
 
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
