@@ -128,6 +128,15 @@ def amountB(accounts, tokenB, user, whaleB):
 
 
 @pytest.fixture
+def transferFundsToUser(tokenA, tokenB):
+    amountA = 1000 * 10 ** tokenA.decimals()
+    amountB = 10000 * 10 ** tokenB.decimals()
+
+    tokenA.transfer(user, amountA, {"from": whaleA})
+    tokenB.transfer(user, amountB, {"from": whaleB})
+
+
+@pytest.fixture
 def weth():
     token_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
     yield Contract(token_address)
@@ -165,15 +174,18 @@ def lbpFactory():
     lbpFactory = Contract("0x751A0bC0e3f75b38e01Cf25bFCE7fF36DE1C87DE")
     yield lbpFactory
 
+@pytest.fixture(autouse=True)
+def balancerMathLib(gov, BalancerMathLib):
+    yield gov.deploy(BalancerMathLib)
 
 @pytest.fixture
-def rebalancer(strategist, Rebalancer, providerA, providerB, lbpFactory):
+def rebalancer(strategist, Rebalancer, providerA, providerB, lbpFactory, balancerMathLib):
     rebalancer = strategist.deploy(Rebalancer, providerA, providerB, lbpFactory)
     yield rebalancer
 
 
 @pytest.fixture
-def rebalancerTestOracle(strategist, Rebalancer, providerATestOracle, providerBTestOracle, lbpFactory):
+def rebalancerTestOracle(strategist, Rebalancer, providerATestOracle, providerBTestOracle, lbpFactory, balancerMathLib):
     rebalancer = strategist.deploy(Rebalancer, providerATestOracle, providerBTestOracle, lbpFactory)
     yield rebalancer
 

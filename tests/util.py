@@ -1,3 +1,6 @@
+from brownie import Contract
+
+
 def stateOfStrat(msg, balancer, providerA, providerB):
     print(f'\n=== STATE OF STRATEGY ===\n')
     print(f'\n{msg}\n')
@@ -18,40 +21,34 @@ def stateOfStrat(msg, balancer, providerA, providerB):
 
 
 # trade that keeps the pool mostly in balance
-def simulate_2_sided_trades(rebalancer, tokenA, tokenB, providerA, providerB, pool, rando):
+def simulate_2_sided_trades(rebalancer, tokenA, tokenB, providerA, providerB, rando, accounts):
     print(f'\n=== SIMULATE TRADES ===\n')
 
-    beforeSwapA = rebalancer.pooledBalanceA()
-    beforeSwapB = rebalancer.pooledBalanceB()
-
     # random user trading using pool
-    tokenA.approve(pool, 2 ** 256 - 1, {'from': rando})
-    tokenB.approve(pool, 2 ** 256 - 1, {'from': rando})
+    tokenA.approve(rebalancer, 2 ** 256 - 1, {'from': rando})
+    tokenB.approve(rebalancer, 2 ** 256 - 1, {'from': rando})
 
-    # simulate some trades to generate trading fees
-    stateOfStrat("before swap B for A", rebalancer, providerA, providerB)
-    pool.swapExactAmountIn(tokenB, 100 * 10 ** 18, tokenA, 0, 2 ** 256 - 1, {'from': rando})
-    stateOfStrat("after swap", rebalancer, providerA, providerB)
-    pool.swapExactAmountOut(tokenA, 2 ** 256 - 1, tokenB, 100 * 10 ** 18, 2 ** 256 - 1, {'from': rando})
-    stateOfStrat("swap back", rebalancer, providerA, providerB)
+    amountIn = 10 * 1e18
+    bVault = Contract(rebalancer.bVault())
 
-    # earnings from trading fee
-    afterSwapA = rebalancer.pooledBalanceA()
-    assert afterSwapA > beforeSwapA
+    traded = rebalancer.onSwap(True, tokenA, tokenB, amountIn, rando, {'from': rando}).return_value
 
-    # simulate some trades to generate trading fees
-    stateOfStrat("before swap A for B", rebalancer, providerA, providerB)
-    pool.swapExactAmountIn(tokenA, 100 * 10 ** 18, tokenB, 0, 2 ** 256 - 1, {'from': rando})
-    stateOfStrat("after swap", rebalancer, providerA, providerB)
-    pool.swapExactAmountOut(tokenB, 2 ** 256 - 1, tokenA, 100 * 10 ** 18, 2 ** 256 - 1, {'from': rando})
-    stateOfStrat("swap back", rebalancer, providerA, providerB)
-
-    # earnings from trading fee
-    afterSwapB = rebalancer.pooledBalanceB()
-    assert afterSwapB > beforeSwapB
-
-    print(f'\nEarned {(afterSwapA - beforeSwapA) / 1e18} tokenA\n')
-    print(f'\nEarned {(afterSwapB - beforeSwapB) / 1e18} tokenB\n')
+    print(f'Traded {traded}')
+    stateOfStrat("after swap A for B", rebalancer, providerA, providerB)
+    assert False
+    # beforeB = tokenB.balanceOf(rando)
+    # rebalancer.queryBatchSwap(True, tokenB, tokenA, 10 * 1e18, rando)
+    # rebalancer.queryBatchSwap(False, tokenA, tokenB, 10 * 1e18, rando)
+    # afterB = tokenB.balanceOf(rando)
+    # print(f'{beforeB}, {afterB}')
+    # assert beforeB > afterB
+    #
+    # # earnings from trading fee
+    # afterSwapB = rebalancer.pooledBalanceB()
+    # assert afterSwapB > beforeSwapB
+    #
+    # print(f'\nEarned {(afterSwapA - beforeSwapA) / 1e18} tokenA\n')
+    # print(f'\nEarned {(afterSwapB - beforeSwapB) / 1e18} tokenB\n')
 
 
 # trade that skews the pool to one side heavily

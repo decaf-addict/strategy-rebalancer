@@ -22,28 +22,13 @@ def test_permissions(providerA, providerB, tokenA, tokenB, amountA, amountB, vau
         rebalancer.liquidateAllPositions(tokenA, rando, {'from': rando})
 
     with brownie.reverts():
-        rebalancer.setController(rebalancer, {'from': rando})
-
-    with brownie.reverts():
         rebalancer.setSwapFee(0.003 * 1e18, {'from': rando})
 
     with brownie.reverts():
         rebalancer.setPublicSwap(False, {'from': rando})
 
     with brownie.reverts():
-        rebalancer.whitelistLiquidityProvider(rando, {'from': rando})
-
-    with brownie.reverts():
-        rebalancer.removeWhitelistedLiquidityProvider(rando, {'from': rando})
-
-    with brownie.reverts():
         rebalancer.migrateProvider(rando, {'from': rando})
-
-    with brownie.reverts():
-        rebalancer.migrateRebalancer(rando, {'from': rando})
-
-    with brownie.reverts():
-        rebalancer.setGovernance(rando, {'from': rando})
 
     with brownie.reverts():
         providerA.migrateRebalancer(rando, {'from': rando})

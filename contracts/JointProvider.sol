@@ -5,8 +5,9 @@ pragma experimental ABIEncoderV2;
 
 import {BaseStrategy} from "@yearnvaults/contracts/BaseStrategy.sol";
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "./Rebalancer.sol";
+import "../interfaces/IRebalancer.sol";
 import "../interfaces/Chainlink.sol";
+import "../interfaces/ISymbol.sol";
 
 
 /**
@@ -17,7 +18,7 @@ contract JointProvider is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    Rebalancer public rebalancer;
+    IRebalancer public rebalancer;
     IPriceFeed public oracle;
     uint256 constant public max = type(uint256).max;
     bool internal isOriginal = true;
@@ -42,9 +43,8 @@ contract JointProvider is BaseStrategy {
     }
 
     function setRebalancer(address payable _rebalancer) external onlyGovernance {
-        require(address(rebalancer) == address(0x0), "Rebalancer already set");
         want.approve(_rebalancer, max);
-        rebalancer = Rebalancer(_rebalancer);
+        rebalancer = IRebalancer(_rebalancer);
         require(rebalancer.tokenA() == want || rebalancer.tokenB() == want);
     }
 
@@ -105,30 +105,57 @@ contract JointProvider is BaseStrategy {
         return rebalancer.shouldTend();
     }
 
+    event Debug(string msg, uint val);
+
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment) {
-        uint256 _before = balanceOfWant();
-        rebalancer.collectTradingFees();
-        rebalancer.sellRewards();
-
-        uint256 _after = balanceOfWant();
-
-        if (_after > _before) {
-            _profit = _after.sub(_before);
-        }
-
         if (_debtOutstanding > 0) {
             if (vault.strategies(address(this)).debtRatio == 0) {
-                _debtPayment = rebalancer.liquidateAllPositions(want, address(this));
-                if (_debtPayment > _debtOutstanding) {
-                    _profit.add(_debtPayment.sub(_debtOutstanding));
-                    _debtPayment = _debtOutstanding;
-                } else {
-                    _loss = _debtOutstanding.sub(_debtPayment);
-                }
+                _debtPayment = liquidateAllPositions();
+                _loss = _debtOutstanding > _debtPayment ? _debtOutstanding.sub(_debtPayment) : 0;
             } else {
-                (_debtPayment, _loss) = rebalancer.liquidatePosition(_debtOutstanding, want, address(this));
+                (_debtPayment, _loss) = liquidatePosition(_debtOutstanding);
             }
         }
+
+        uint256 beforeWant = balanceOfWant();
+        rebalancer.collectTradingFees();
+        rebalancer.sellRewards();
+        uint256 afterWant = balanceOfWant();
+
+        _profit = afterWant.sub(beforeWant);
+
+        if (_profit > 0) {
+            uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
+            uint debt = totalDebt();
+            _loss += debt > pooled ? debt.sub(pooled) : 0;
+        }
+
+        if (_profit > _loss) {
+            _profit = _profit.sub(_loss);
+            _loss = 0;
+        } else {
+            _loss = _loss.sub(_profit);
+            _profit = 0;
+        }
+
+
+        //        if (_after > _before) {
+        //            _profit = _after.sub(_before);
+        //        }
+        //
+        //        if (_debtOutstanding > 0) {
+        //            if (vault.strategies(address(this)).debtRatio == 0) {
+        //                _debtPayment = rebalancer.liquidateAllPositions(want, address(this));
+        //                if (_debtPayment > _debtOutstanding) {
+        //                    _profit.add(_debtPayment.sub(_debtOutstanding));
+        //                    _debtPayment = _debtOutstanding;
+        //                } else {
+        //                    _loss = _debtOutstanding.sub(_debtPayment);
+        //                }
+        //            } else {
+        //                (_debtPayment, _loss) = rebalancer.liquidatePosition(_debtOutstanding, want, address(this));
+        //            }
+        //        }
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -137,9 +164,15 @@ contract JointProvider is BaseStrategy {
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss) {
         uint256 _loose = balanceOfWant();
+        uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
+
         if (_amountNeeded > _loose) {
             uint256 _amountNeededMore = _amountNeeded.sub(_loose);
-            rebalancer.liquidatePosition(_amountNeededMore, want, address(this));
+            if (_amountNeededMore >= pooled) {
+                rebalancer.liquidateAllPositions(want, address(this));
+            } else {
+                rebalancer.liquidatePosition(_amountNeededMore, want, address(this));
+            }
             _liquidatedAmount = balanceOfWant();
             _loss = _amountNeeded.sub(_liquidatedAmount);
         } else {
@@ -162,7 +195,7 @@ contract JointProvider is BaseStrategy {
     // only called by rebalancer
     function migrateRebalancer(address payable _newRebalancer) external {
         require(msg.sender == address(rebalancer), "Not rebalancer!");
-        rebalancer = Rebalancer(_newRebalancer);
+        rebalancer = IRebalancer(_newRebalancer);
         want.approve(_newRebalancer, max);
     }
 

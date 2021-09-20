@@ -37,7 +37,7 @@ def test_harvest_rebalance(providerA, providerB, tokenA, tokenB, amountA, amount
 #     assert beforeHarvestA != afterHarvestA
 #     assert beforeHarvestB != afterHarvestB
 #
-#     util.simulate_2_sided_trades(rebalancer, tokenA, tokenB, providerA, providerB, pool, rando)
+#     util.simulate_2_sided_trades(rebalancer, tokenA, tokenB, providerA, providerB, rando)
 #     util.simulate_bal_reward(rebalancer, reward, reward_whale)
 #     util.stateOfStrat("after bal reward", rebalancer, providerA, providerB)
 #
