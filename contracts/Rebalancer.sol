@@ -100,7 +100,8 @@ contract Rebalancer {
         lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
         lbp = ILiquidityBootstrappingPool(
             lbpFactory.create(
-                "YFI-WETH Pool", "YFI-WETH yBPT",
+                string(abi.encodePacked(name()[0], name()[1])),
+                string(abi.encodePacked(name()[1], " yBPT")),
                 tokens,
                 initialWeights,
                 0.01 * 1e18,
@@ -135,7 +136,7 @@ contract Rebalancer {
         emit Cloned(newStrategy);
     }
 
-    function name() external view returns (string[] memory) {
+    function name() public view returns (string[] memory) {
         string[] memory names = new string[](2);
         names[0] = "Rebalancer ";
         names[1] = string(abi.encodePacked(ISymbol(address(tokenA)).symbol(), "-", ISymbol(address(tokenB)).symbol()));

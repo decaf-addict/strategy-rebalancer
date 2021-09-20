@@ -44,3 +44,4 @@ def test_revoke_strategy_from_vault(providerA, providerB, tokenA, tokenB, amount
 
     assert pytest.approx(tokenA.balanceOf(vaultA.address), rel=RELATIVE_APPROX) == amountA
     assert pytest.approx(tokenB.balanceOf(vaultB.address), rel=RELATIVE_APPROX) == amountB
+

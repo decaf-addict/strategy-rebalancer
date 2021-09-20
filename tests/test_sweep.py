@@ -40,3 +40,18 @@ def test_sweep(gov, vaultA, vaultB, providerA, providerB, tokenA, tokenB, user, 
     providerB.sweep(crv, {"from": gov})
     assert crv.balanceOf(gov) == (1000 * 1e18 + before_balance) * 2
 
+
+def test_gov_emergency(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer, user, gov,
+                       setup, RELATIVE_APPROX, testSetup):
+    providerA.harvest({"from": gov})
+    providerB.harvest({"from": gov})
+
+    beforePooledA = rebalancer.pooledBalanceA()
+    beforePooledB = rebalancer.pooledBalanceB()
+    beforeGovA = tokenA.balanceOf(gov)
+    beforeGovB = tokenB.balanceOf(gov)
+    rebalancer.liquidateAllPositions(tokenA, gov, {'from': gov})
+    rebalancer.liquidateAllPositions(tokenB, gov, {'from': gov})
+
+    assert pytest.approx(tokenA.balanceOf(gov) - beforeGovA, rel=RELATIVE_APPROX) == beforePooledA
+    assert pytest.approx(tokenB.balanceOf(gov) - beforeGovB, rel=RELATIVE_APPROX) == beforePooledB

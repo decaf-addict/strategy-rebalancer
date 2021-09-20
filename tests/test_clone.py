@@ -3,16 +3,16 @@ import pytest
 import brownie
 
 
-# def test_clone_provider(providerA, providerB, setup, vaultA, vaultB, strategist, rewards, keeper, rebalancer, oracleA,
-#                         oracleB):
-#     # providerB is already a clone of providerA, operations with clones are covered in all other tests
-#     # See providerB fixture
-#     with brownie.reverts("Strategy already initialized"):
-#         providerA.initialize(vaultA, strategist, rewards, keeper, oracleA, {'from': strategist})
-#     assert providerA.name() == "Rebalancer YFI JointProvider YFI-WETH"
-#     with brownie.reverts("Strategy already initialized"):
-#         providerB.initialize(vaultB, strategist, rewards, keeper, oracleB, {'from': strategist})
-#     assert providerB.name() == "Rebalancer WETH JointProvider YFI-WETH"
+def test_clone_provider(providerA, providerB, setup, vaultA, vaultB, strategist, rewards, keeper, rebalancer, oracleA,
+                        oracleB):
+    # providerB is already a clone of providerA, operations with clones are covered in all other tests
+    # See providerB fixture
+    with brownie.reverts("Strategy already initialized"):
+        providerA.initialize(vaultA, strategist, rewards, keeper, oracleA, {'from': strategist})
+    assert providerA.name() == "Rebalancer YFI JointProvider YFI-WETH"
+    with brownie.reverts("Strategy already initialized"):
+        providerB.initialize(vaultB, strategist, rewards, keeper, oracleB, {'from': strategist})
+    assert providerB.name() == "Rebalancer WETH JointProvider YFI-WETH"
 
 
 def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFactory, tokenA, tokenB, providerA,
