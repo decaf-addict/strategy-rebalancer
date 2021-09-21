@@ -195,7 +195,7 @@ contract Rebalancer {
         uint totalB = totalBalanceOf(tokenB);
         return (totalA >= debtA && totalB > debtB) || (totalA > debtA && totalB >= debtB);
     }
-    
+
     // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage
     // since positive slippage for user = negative slippage for pool aka loss for strat
     function shouldTend() public view returns (bool _shouldTend){
@@ -314,7 +314,9 @@ contract Rebalancer {
             _liquidated = _amountNeeded;
         }
 
-        _token.transfer(_to, _liquidated);
+        if (_liquidated > 0) {
+            _token.transfer(_to, _liquidated);
+        }
         _short = _amountNeeded.sub(_liquidated);
     }
 
