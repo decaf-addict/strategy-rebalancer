@@ -50,8 +50,8 @@ def keeper(accounts):
 
 @pytest.fixture
 def tokenA(interface):
-    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC
-    # token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # YFI
+    # token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC
+    token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # YFI
     yield interface.ERC20(token_address)
 
 
@@ -63,8 +63,8 @@ def tokenB(interface):
 
 @pytest.fixture
 def oracleA():
-    # feed = "0xA027702dbb89fbd58938e4324ac03B58d812b0E1"  # YFI/USD
-    feed = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"  # USDC/USD
+    feed = "0xA027702dbb89fbd58938e4324ac03B58d812b0E1"  # YFI/USD
+    # feed = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"  # USDC/USD
 
     yield Contract(feed)
 
@@ -77,8 +77,8 @@ def oracleB():
 
 @pytest.fixture
 def whaleA(accounts):
-    whale = accounts.at("0x0a59649758aa4d66e25f08dd01271e891fe52199", force=True)  # USDC whale
-    # whale = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True) # YFI whale
+    # whale = accounts.at("0x0a59649758aa4d66e25f08dd01271e891fe52199", force=True)  # USDC whale
+    whale = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True) # YFI whale
     return whale
 
 
@@ -89,7 +89,7 @@ def whaleB(accounts):
 
 @pytest.fixture
 def transferToRando(accounts, tokenA, tokenB, rando, whaleA, whaleB):
-    amount = 10000000 * 10 ** tokenA.decimals()
+    amount = 100 * 10 ** tokenA.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
@@ -105,7 +105,7 @@ def transferToRando(accounts, tokenA, tokenB, rando, whaleA, whaleB):
 
 @pytest.fixture
 def amountA(accounts, tokenA, user, whaleA):
-    amount = 10_000_000 * 10 ** tokenA.decimals()
+    amount = 100 * 10 ** tokenA.decimals()
     tokenA.transfer(user, amount, {"from": whaleA})
     yield amount
 
