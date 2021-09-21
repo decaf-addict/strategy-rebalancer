@@ -1,18 +1,22 @@
 import util
 import pytest
 import brownie
+from brownie import Contract
+
 
 
 def test_clone_provider(providerA, providerB, setup, vaultA, vaultB, strategist, rewards, keeper, rebalancer, oracleA,
                         oracleB):
     # providerB is already a clone of providerA, operations with clones are covered in all other tests
     # See providerB fixture
+    symbolA = Contract(providerA.want()).symbol()
+    symbolB = Contract(providerB.want()).symbol()
     with brownie.reverts("Strategy already initialized"):
         providerA.initialize(vaultA, strategist, rewards, keeper, oracleA, {'from': strategist})
-    assert providerA.name() == "Rebalancer USDC JointProvider USDC-WETH"
+    assert providerA.name() == f"Rebalancer {symbolA} JointProvider {symbolA}-{symbolB}"
     with brownie.reverts("Strategy already initialized"):
         providerB.initialize(vaultB, strategist, rewards, keeper, oracleB, {'from': strategist})
-    assert providerB.name() == "Rebalancer WETH JointProvider USDC-WETH"
+    assert providerB.name() == f"Rebalancer {symbolB} JointProvider {symbolA}-{symbolB}"
 
 
 def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFactory, tokenA, tokenB, providerA,
