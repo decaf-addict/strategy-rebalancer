@@ -25,7 +25,7 @@ def test_harvest_rebalance(providerA, providerB, tokenA, tokenB, amountA, amount
 
 
 def test_profitable_harvest(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer,
-                            user, gov, setup, rando, transferToRando, chain, testSetup, reward, reward_whale):
+                            user, gov, setup, rando, transferToRando, chain, testSetup, reward, reward_whale, web3):
     beforeHarvestA = rebalancer.currentWeightA()
     beforeHarvestB = rebalancer.currentWeightB()
 
@@ -43,10 +43,15 @@ def test_profitable_harvest(providerA, providerB, tokenA, tokenB, amountA, amoun
     ppsBeforeA = vaultA.pricePerShare()
     ppsBeforeB = vaultB.pricePerShare()
 
-    providerA.harvest({"from": gov})
-    util.stateOfStrat("harvestA after swap", rebalancer, providerA, providerB)
-    providerB.harvest({"from": gov})
-    util.stateOfStrat("harvestB after swap", rebalancer, providerA, providerB)
+    web3.provider.make_request("miner_stop", [])
+
+    providerA.harvest({"from": gov, "required_confs": 0})
+    providerB.harvest({"from": gov, "required_confs": 0})
+
+    # When ganache is started with automing this is the only way to get two transactions within the same block.
+
+    web3.provider.make_request("evm_mine", [chain.time() + 5])
+    web3.provider.make_request("miner_start", [])
 
     chain.sleep(3600)
     chain.mine(1)
