@@ -9,10 +9,10 @@ def test_clone_provider(providerA, providerB, setup, vaultA, vaultB, strategist,
     # See providerB fixture
     with brownie.reverts("Strategy already initialized"):
         providerA.initialize(vaultA, strategist, rewards, keeper, oracleA, {'from': strategist})
-    assert providerA.name() == "Rebalancer YFI JointProvider YFI-WETH"
+    assert providerA.name() == "Rebalancer USDC JointProvider USDC-WETH"
     with brownie.reverts("Strategy already initialized"):
         providerB.initialize(vaultB, strategist, rewards, keeper, oracleB, {'from': strategist})
-    assert providerB.name() == "Rebalancer WETH JointProvider YFI-WETH"
+    assert providerB.name() == "Rebalancer WETH JointProvider USDC-WETH"
 
 
 def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFactory, tokenA, tokenB, providerA,
@@ -25,6 +25,8 @@ def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFact
 
     transaction = rebalancer.cloneRebalancer(providerA, providerB, lbpFactory, {"from": gov})
     cloned_rebalancer = Rebalancer.at(transaction.return_value)
+
+    util.stateOfStrat("orig rebalancer", rebalancer, providerA, providerB)
 
     vaultA.withdraw({'from': user})
     vaultB.withdraw({'from': user})
@@ -55,9 +57,9 @@ def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFact
     ppsBeforeB = vaultB.pricePerShare()
 
     providerA.harvest({"from": gov})
-    util.stateOfStrat("harvestA after swap", cloned_rebalancer, providerA, providerB)
+    util.stateOfStrat("harvestA after reward", cloned_rebalancer, providerA, providerB)
     providerB.harvest({"from": gov})
-    util.stateOfStrat("harvestB after swap", cloned_rebalancer, providerA, providerB)
+    util.stateOfStrat("harvestB after reward", cloned_rebalancer, providerA, providerB)
 
     chain.sleep(3600)
     chain.mine(1)

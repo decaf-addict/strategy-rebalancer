@@ -23,5 +23,4 @@ interface IJointProvider {
     function strategist() external view returns (address);
 
     function want() external view returns (IERC20);
-
 }

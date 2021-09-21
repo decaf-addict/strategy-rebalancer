@@ -18,7 +18,6 @@ def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA
     assert beforeHarvestA != afterHarvestA
     assert beforeHarvestB != afterHarvestB
 
-    # util.simulate_2_sided_trades(rebalancer, tokenA, tokenB, providerA, providerB, rando)
     util.simulate_bal_reward(rebalancer, reward, reward_whale)
 
     ppsBeforeA = vaultA.pricePerShare()
@@ -27,7 +26,7 @@ def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
 
-    util.stateOfStrat("harvest after swap", rebalancer, providerA, providerB)
+    util.stateOfStrat("harvest after profit", rebalancer, providerA, providerB)
 
     chain.sleep(3600)
     chain.mine(1)
@@ -36,10 +35,10 @@ def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA
     assert vaultB.pricePerShare() > ppsBeforeB
 
     # airdrops
-    tokenA.transfer(rebalancer, 3 * 1e18, {'from': whaleA})
+    tokenA.transfer(rebalancer, 300000 * 1e6, {'from': whaleA})
     tokenB.transfer(rebalancer, 3 * 1e18, {'from': whaleB})
 
-    tokenA.transfer(providerA, 3 * 1e18, {'from': whaleA})
+    tokenA.transfer(providerA, 300000 * 1e6, {'from': whaleA})
     tokenB.transfer(providerB, 3 * 1e18, {'from': whaleB})
 
     util.stateOfStrat("after airdrop", rebalancer, providerA, providerB)

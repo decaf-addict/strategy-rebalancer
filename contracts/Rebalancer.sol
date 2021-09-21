@@ -183,51 +183,56 @@ contract Rebalancer {
             uint rewardsA = _rewards.mul(currentWeightA()).div(1e18);
             uint rewardsB = _rewards.sub(rewardsA);
             // TODO migrate to ySwapper when ready
-            uniswap.swapExactTokensForTokens(rewardsA, 0, _getPath(reward, tokenA), address(providerA), now);
-            uniswap.swapExactTokensForTokens(rewardsB, 0, _getPath(reward, tokenB), address(providerB), now);
+            _swap(rewardsA, _getPath(reward, tokenA), address(providerA));
+            _swap(rewardsB, _getPath(reward, tokenB), address(providerB));
         }
     }
 
     function shouldHarvest() public view returns (bool _shouldHarvest){
         uint debtA = providerA.totalDebt();
         uint debtB = providerB.totalDebt();
-        uint pooledA = pooledBalanceA();
-        uint pooledB = pooledBalanceB();
-        return (pooledA >= debtA && pooledB > debtB) || (pooledA > debtA && pooledB >= debtB);
+        uint totalA = totalBalanceOf(tokenA);
+        uint totalB = totalBalanceOf(tokenB);
+        return (totalA >= debtA && totalB > debtB) || (totalA > debtA && totalB >= debtB);
     }
-
+    
     // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage
     // since positive slippage for user = negative slippage for pool aka loss for strat
     function shouldTend() public view returns (bool _shouldTend){
-        uint debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
-        uint debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        // 18 == decimals of USD
+        uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
+        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenB), 18);
+        uint debtTotalUsd = debtAUsd.add(debtBUsd);
         uint idealAUsd = debtAUsd.add(debtBUsd).mul(currentWeightA()).div(1e18);
         uint idealBUsd = debtAUsd.add(debtBUsd).sub(idealAUsd);
 
-        uint weightIn = idealAUsd > debtAUsd ? currentWeightA() : currentWeightB();
-        uint weightOut = idealAUsd > debtAUsd ? currentWeightB() : currentWeightA();
-        uint balanceIn = idealAUsd > debtAUsd ? pooledBalanceA() : pooledBalanceB();
-        uint balanceOut = idealAUsd > debtAUsd ? pooledBalanceB() : pooledBalanceA();
-        uint amountIn = idealAUsd > debtAUsd
-        ? idealAUsd.sub(debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed())
-        : idealBUsd.sub(debtBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed());
-        uint amountOutIfNoSlippage = idealAUsd > debtAUsd
-        ? debtBUsd.sub(idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed())
-        : debtAUsd.sub(idealAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed());
-        uint outDecimals = idealAUsd > debtAUsd ? decimals(tokenB) : decimals(tokenA);
+        uint weight = debtAUsd.mul(1e18).div(debtTotalUsd);
+        if (weight > 0.95 * 1e18 || weight < 0.05 * 1e18) {
+            return true;
+        }
 
-        // calculate the actual amount out from trade if there were no trading fees
-        uint amountOut = BalancerMathLib.calcOutGivenIn(balanceIn, weightIn, balanceOut, weightOut, amountIn, 0);
+        uint amountIn = _adjustDecimals(idealAUsd.sub(debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed()), 18, _decimals(tokenA));
+        uint amountOutIfNoSlippage = _adjustDecimals(debtBUsd.sub(idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed()), 18, _decimals(tokenB));
+        uint amountOut;
+
+
+        if (idealAUsd > debtAUsd) {
+            amountOut = BalancerMathLib.calcOutGivenIn(pooledBalanceA(), currentWeightA(), pooledBalanceB(), currentWeightB(), amountIn, 0);
+        } else {
+            uint temp = amountIn;
+            amountIn = amountOutIfNoSlippage;
+            amountOutIfNoSlippage = temp;
+            amountOut = BalancerMathLib.calcOutGivenIn(pooledBalanceB(), currentWeightB(), pooledBalanceA(), currentWeightA(), amountIn, 0);
+        }
 
         // maximum positive slippage for user trading. Evaluate that against our fees.
         if (amountOut > amountOutIfNoSlippage) {
-            uint slippage = amountOut.sub(amountOutIfNoSlippage).mul(10 ** outDecimals).div(amountOutIfNoSlippage);
+            uint slippage = amountOut.sub(amountOutIfNoSlippage).mul(10 ** (idealAUsd > debtAUsd ? _decimals(tokenB) : _decimals(tokenA))).div(amountOutIfNoSlippage);
             return slippage > lbp.getSwapFeePercentage().sub(tendBuffer);
         } else {
             return false;
         }
     }
-
 
     // pull from providers
     function adjustPosition() public onlyAllowed {
@@ -241,16 +246,17 @@ contract Rebalancer {
             _exitPool(abi.encode(IBalancerVault.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, lbpBalance));
         }
 
-        uint debtAUsd = providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals());
-        uint debtBUsd = providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals());
+        // 18 == decimals of USD
+        uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()), _decimals(tokenA), 18);
+        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()), _decimals(tokenB), 18);
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
 
         // update weights to their appropriate priced balances
         uint[] memory newWeights = new uint[](2);
-        newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), 0.96 * 1e18), 0.04 * 1e18);
+        newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), 0.9 * 1e18), 0.1 * 1e18);
         newWeights[1] = 1e18 - newWeights[0];
         lbp.updateWeightsGradually(now, now, newWeights);
-        bool atLimit = newWeights[0] == 0.96 * 1e18 || newWeights[0] == 0.04 * 1e18;
+        bool atLimit = newWeights[0] == 0.9 * 1e18 || newWeights[0] == 0.1 * 1e18;
 
         uint looseA = looseBalanceA();
         uint looseB = looseBalanceB();
@@ -264,11 +270,20 @@ contract Rebalancer {
         amountsIn[0] = looseA;
         amountsIn[1] = looseB;
 
-        // 24 comes from 96%/4%. Limiting factor comes from the asset that hits the lower bound.
-        if (newWeights[0] == 0.04 * 1e18) {
-            amountsIn[1] = looseA.mul(24).mul(providerA.getPriceFeed()).div(providerB.getPriceFeed());
-        } else if (newWeights[1] == 0.04 * 1e18) {
-            amountsIn[0] = looseB.mul(24).mul(providerB.getPriceFeed()).div(providerA.getPriceFeed());
+        // 24 comes from 96%/4%. Limiting factor is the asset that hits the lower bound. Use that to calculate
+        // what the other amount should be
+        if (newWeights[0] == 0.1 * 1e18) {
+            amountsIn[1] = _adjustDecimals(
+                looseA.mul(24).mul(providerA.getPriceFeed()).div(providerB.getPriceFeed()),
+                _decimals(tokenA),
+                _decimals(tokenB)
+            );
+        } else if (newWeights[1] == 0.1 * 1e18) {
+            amountsIn[0] = _adjustDecimals(
+                looseB.mul(24).mul(providerB.getPriceFeed()).div(providerA.getPriceFeed()),
+                _decimals(tokenB),
+                _decimals(tokenA)
+            );
         }
 
         bytes memory userData;
@@ -308,6 +323,7 @@ contract Rebalancer {
         if (lbpBalance > 0) {
             // exit entire position
             _exitPool(abi.encode(IBalancerVault.ExitKind.EXACT_BPT_IN_FOR_TOKENS_OUT, lbpBalance));
+            evenOut();
         }
         _liquidatedAmount = _token.balanceOf(address(this));
         _token.transfer(_to, _liquidatedAmount);
@@ -332,12 +348,21 @@ contract Rebalancer {
             path = _getPath(tokenB, tokenA);
         }
         if (amount > 0) {
-            uniswap.swapExactTokensForTokens(amount, 0, path, address(this), now);
+            _swap(amount, path, address(this));
         }
     }
 
 
     // Helpers //
+    function _swap(uint _amount, address[] memory _path, address _to) internal {
+        uint decIn = ERC20(_path[0]).decimals();
+        uint decOut = ERC20(_path[_path.length - 1]).decimals();
+        uint decDelta = decIn > decOut ? decIn.sub(decOut) : 0;
+        if (_amount > 10 ** decDelta) {
+            uniswap.swapExactTokensForTokens(_amount, 0, _path, _to, now);
+        }
+    }
+
     function _exitPool(bytes memory _userData) internal {
         IBalancerVault.ExitPoolRequest memory request = IBalancerVault.ExitPoolRequest(assets, minAmountsOut, _userData, false);
         bVault.exitPool(lbp.getPoolId(), address(this), address(this), request);
@@ -455,7 +480,7 @@ contract Rebalancer {
         return lbp.getNormalizedWeights()[1];
     }
 
-    function decimals(IERC20 _token) internal view returns (uint _decimals){
+    function _decimals(IERC20 _token) internal view returns (uint _decimals){
         return ERC20(address(_token)).decimals();
     }
 
@@ -469,6 +494,14 @@ contract Rebalancer {
             revert();
         }
         return _tokenIndex;
+    }
+
+    function _adjustDecimals(uint _amount, uint _decimalsFrom, uint _decimalsTo) internal pure returns (uint){
+        if (_decimalsFrom > _decimalsTo) {
+            return _amount.div(10 ** _decimalsFrom.sub(_decimalsTo));
+        } else {
+            return _amount.mul(10 ** _decimalsTo.sub(_decimalsFrom));
+        }
     }
 
     receive() external payable {}

@@ -5,6 +5,7 @@ pragma experimental ABIEncoderV2;
 
 import {BaseStrategy} from "@yearnvaults/contracts/BaseStrategy.sol";
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "../interfaces/IRebalancer.sol";
 import "../interfaces/Chainlink.sol";
 import "../interfaces/ISymbol.sol";
@@ -40,7 +41,7 @@ contract JointProvider is BaseStrategy {
 
     function _initializeStrat(address _oracle) internal {
         oracle = IPriceFeed(_oracle);
-        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012); // health.ychad.eth
+        //        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012); // health.ychad.eth
     }
 
     function setRebalancer(address payable _rebalancer) external onlyGovernance {
@@ -118,18 +119,25 @@ contract JointProvider is BaseStrategy {
             }
         }
 
+        // Interestingly, if you overpay on debt payment, the overpaid amount just sits in the strat.
+        // Report overpayment as profit
+        if (_debtPayment > _debtOutstanding) {
+            _profit = _debtPayment.sub(_debtOutstanding);
+            _debtPayment = _debtPayment.sub(_profit);
+        }
+
         uint beforeWant = balanceOfWant();
         rebalancer.collectTradingFees();
         rebalancer.sellRewards();
         uint afterWant = balanceOfWant();
 
-        _profit = afterWant.sub(beforeWant);
+        _profit += afterWant.sub(beforeWant);
 
-//        if (_profit > 0) {
-//            uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
-//            uint debt = totalDebt();
-//            _loss += debt > pooled ? debt.sub(pooled) : 0;
-//        }
+        //        if (_profit > 0) {
+        //            uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
+        //            uint debt = totalDebt();
+        //            _loss += debt > pooled ? debt.sub(pooled) : 0;
+        //        }
 
         if (_profit > _loss) {
             _profit = _profit.sub(_loss);

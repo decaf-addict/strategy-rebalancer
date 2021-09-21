@@ -50,8 +50,8 @@ def keeper(accounts):
 
 @pytest.fixture
 def tokenA(interface):
-    # token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC
-    token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # YFI
+    token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC
+    # token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # YFI
     yield interface.ERC20(token_address)
 
 
@@ -63,8 +63,8 @@ def tokenB(interface):
 
 @pytest.fixture
 def oracleA():
-    feed = "0xA027702dbb89fbd58938e4324ac03B58d812b0E1"  # YFI/USD
-    # feed = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"  # USDC/USD
+    # feed = "0xA027702dbb89fbd58938e4324ac03B58d812b0E1"  # YFI/USD
+    feed = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"  # USDC/USD
 
     yield Contract(feed)
 
@@ -77,8 +77,9 @@ def oracleB():
 
 @pytest.fixture
 def whaleA(accounts):
-    # YFI whale
-    return accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True)
+    whale = accounts.at("0x0a59649758aa4d66e25f08dd01271e891fe52199", force=True)  # USDC whale
+    # whale = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True) # YFI whale
+    return whale
 
 
 @pytest.fixture
@@ -88,13 +89,13 @@ def whaleB(accounts):
 
 @pytest.fixture
 def transferToRando(accounts, tokenA, tokenB, rando, whaleA, whaleB):
-    amount = 1000 * 10 ** tokenA.decimals()
+    amount = 10000000 * 10 ** tokenA.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
     tokenA.transfer(rando, amount, {"from": whaleA})
 
-    amount = 10000 * 10 ** tokenB.decimals()
+    amount = 1000 * 10 ** tokenB.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
@@ -104,37 +105,16 @@ def transferToRando(accounts, tokenA, tokenB, rando, whaleA, whaleB):
 
 @pytest.fixture
 def amountA(accounts, tokenA, user, whaleA):
-    amount = 1000 * 10 ** tokenA.decimals()
-    # In order to get some funds for the token you are about to use,
-    # it impersonate an exchange address to use it's funds.
-
-    # YFI whale
-    # reserve = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True)
-    # USDC whale
-
+    amount = 10_000_000 * 10 ** tokenA.decimals()
     tokenA.transfer(user, amount, {"from": whaleA})
-
     yield amount
 
 
 @pytest.fixture
 def amountB(accounts, tokenB, user, whaleB):
-    amount = 10000 * 10 ** tokenB.decimals()
-    # In order to get some funds for the token you are about to use,
-    # it impersonate an exchange address to use it's funds.
-
+    amount = 1_000 * 10 ** tokenB.decimals()
     tokenB.transfer(user, amount, {"from": whaleB})
     yield amount
-
-
-@pytest.fixture
-def transferFundsToUser(tokenA, tokenB, user, whaleA, whaleB):
-    amountA = 1000 * 10 ** tokenA.decimals()
-    amountB = 10000 * 10 ** tokenB.decimals()
-
-    tokenA.transfer(user, amountA, {"from": whaleA})
-    tokenB.transfer(user, amountB, {"from": whaleB})
-
 
 @pytest.fixture
 def weth():
@@ -284,12 +264,13 @@ def testSetup(tokenA, vaultA, amountA, tokenB, vaultB, amountB, user):
     tokenA.approve(vaultA.address, amountA, {"from": user})
     vaultA.deposit(amountA, {"from": user})
     assert tokenA.balanceOf(vaultA.address) == amountA
-    print(f'\ndeposited {amountA / 1e18} tokenA to vaultA\n')
+
+    print(f'\ndeposited {amountA / 10 ** tokenA.decimals()} tokenA to vaultA\n')
 
     tokenB.approve(vaultB.address, amountB, {"from": user})
     vaultB.deposit(amountB, {"from": user})
     assert tokenB.balanceOf(vaultB.address) == amountB
-    print(f'deposited {amountB / 1e18} tokenB to vaultB\n')
+    print(f'deposited {amountB / 10 ** tokenB.decimals()} tokenB to vaultB\n')
 
 
 @pytest.fixture(scope="session")
