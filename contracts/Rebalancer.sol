@@ -375,6 +375,7 @@ contract Rebalancer {
         providerB = IJointProvider(_providerB);
         tokenA = providerA.want();
         tokenB = providerB.want();
+        require(tokenA != tokenB);
         tokenA.approve(address(uniswap), max);
         tokenB.approve(address(uniswap), max);
     }

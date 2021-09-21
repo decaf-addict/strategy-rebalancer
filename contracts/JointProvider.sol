@@ -107,8 +107,6 @@ contract JointProvider is BaseStrategy {
         return rebalancer.shouldTend();
     }
 
-    event Debug(string msg, uint val);
-
     function prepareReturn(uint _debtOutstanding) internal override returns (uint _profit, uint _loss, uint _debtPayment) {
         if (_debtOutstanding > 0) {
             if (vault.strategies(address(this)).debtRatio == 0) {
@@ -132,12 +130,6 @@ contract JointProvider is BaseStrategy {
         uint afterWant = balanceOfWant();
 
         _profit += afterWant.sub(beforeWant);
-
-        //        if (_profit > 0) {
-        //            uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
-        //            uint debt = totalDebt();
-        //            _loss += debt > pooled ? debt.sub(pooled) : 0;
-        //        }
 
         if (_profit > _loss) {
             _profit = _profit.sub(_loss);
