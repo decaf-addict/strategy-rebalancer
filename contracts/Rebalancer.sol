@@ -276,7 +276,6 @@ contract Rebalancer {
         }
 
         lbp.updateWeightsGradually(now, now, newWeights);
-        bool atLimit = newWeights[0] == 0.9 * 1e18 || newWeights[0] == 0.1 * 1e18;
 
         uint looseA = looseBalanceA();
         uint looseB = looseBalanceB();
@@ -285,12 +284,13 @@ contract Rebalancer {
         maxAmountsIn[0] = looseA;
         maxAmountsIn[1] = looseB;
 
-        // re-enter pool with max funds at the appropriate weights
+        // Re-enter pool with max funds at the appropriate weights.
         uint[] memory amountsIn = new uint[](2);
         amountsIn[0] = looseA;
         amountsIn[1] = looseB;
 
         bytes memory userData;
+
         if (initJoin) {
             userData = abi.encode(IBalancerVault.JoinKind.INIT, amountsIn);
             initJoin = false;
