@@ -39,6 +39,9 @@ contract Rebalancer {
     bool internal initJoin;
     uint public tendBuffer;
 
+    // publicSwap flips on and off depending on weight balance conditions.
+    // This acts as a master switch to stay disabled during emergencies.
+    bool public stayDisabled;
     modifier toOnlyAllowed(address _to){
         require(
             _to == address(providerA) ||
