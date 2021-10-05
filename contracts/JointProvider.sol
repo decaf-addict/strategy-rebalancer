@@ -120,16 +120,13 @@ contract JointProvider is BaseStrategy {
         // Interestingly, if you overpay on debt payment, the overpaid amount just sits in the strat.
         // Report overpayment as profit
         if (_debtPayment > _debtOutstanding) {
-            _profit = _debtPayment.sub(_debtOutstanding);
+            _profit += _debtPayment.sub(_debtOutstanding);
             _debtPayment = _debtPayment.sub(_profit);
         }
 
-        uint beforeWant = balanceOfWant();
-        rebalancer.collectTradingFees();
+        beforeWant = balanceOfWant();
         rebalancer.sellRewards();
-        uint afterWant = balanceOfWant();
-
-        _profit += afterWant.sub(beforeWant);
+        _profit += balanceOfWant().sub(beforeWant);
 
         if (_profit > _loss) {
             _profit = _profit.sub(_loss);
