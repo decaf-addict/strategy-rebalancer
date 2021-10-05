@@ -213,8 +213,13 @@ contract Rebalancer {
         uint idealBUsd = debtTotalUsd.sub(idealAUsd);
 
         uint weight = debtAUsd.mul(1e18).div(debtTotalUsd);
-        if (weight > 0.95 * 1e18 || weight < 0.05 * 1e18) {
-            return true;
+
+        // If it hits weight boundary, tend so that we can disable swaps. If already disabled, no need to tend again.
+        if (weight >= upperBound || weight <= lowerBound) {
+            return getPublicSwap();
+        } else if (!getPublicSwap()) {
+            // If it's not at weight boundary, it's safe again to enable swap
+            return !stayDisabled;
         }
 
         uint amountIn;
@@ -259,8 +264,17 @@ contract Rebalancer {
 
         // update weights to their appropriate priced balances
         uint[] memory newWeights = new uint[](2);
-        newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), 0.9 * 1e18), 0.1 * 1e18);
+        newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), upperBound), lowerBound);
         newWeights[1] = 1e18 - newWeights[0];
+
+        // If adjustment hits weight boundary, turn off trades. Adjust debt ratio manually until it's not at boundary anymore.
+        if (newWeights[0] == lowerBound || newWeights[1] == lowerBound) {
+            lbp.setSwapEnabled(false);
+            return;
+        } else if (!getPublicSwap() && !stayDisabled) {
+            lbp.setSwapEnabled(true);
+        }
+
         lbp.updateWeightsGradually(now, now, newWeights);
         bool atLimit = newWeights[0] == 0.9 * 1e18 || newWeights[0] == 0.1 * 1e18;
 
@@ -276,22 +290,6 @@ contract Rebalancer {
         amountsIn[0] = looseA;
         amountsIn[1] = looseB;
 
-        // 24 comes from 96%/4%. Limiting factor is the asset that hits the lower bound. Use that to calculate
-        // what the other amount should be
-        if (newWeights[0] == 0.1 * 1e18) {
-            amountsIn[1] = _adjustDecimals(
-                looseA.mul(24).mul(providerA.getPriceFeed()).div(providerB.getPriceFeed()),
-                _decimals(tokenA),
-                _decimals(tokenB)
-            );
-        } else if (newWeights[1] == 0.1 * 1e18) {
-            amountsIn[0] = _adjustDecimals(
-                looseB.mul(24).mul(providerB.getPriceFeed()).div(providerA.getPriceFeed()),
-                _decimals(tokenB),
-                _decimals(tokenA)
-            );
-        }
-
         bytes memory userData;
         if (initJoin) {
             userData = abi.encode(IBalancerVault.JoinKind.INIT, amountsIn);
@@ -301,7 +299,6 @@ contract Rebalancer {
         }
         IBalancerVault.JoinPoolRequest memory request = IBalancerVault.JoinPoolRequest(assets, maxAmountsIn, userData, false);
         bVault.joinPool(lbp.getPoolId(), address(this), address(this), request);
-
     }
 
     function liquidatePosition(uint _amountNeeded, IERC20 _token, address _to) public toOnlyAllowed(_to) onlyAllowed returns (uint _liquidated, uint _short){
