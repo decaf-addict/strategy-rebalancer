@@ -199,7 +199,7 @@ contract Rebalancer {
     function shouldTend() public view returns (bool _shouldTend){
         // 18 == decimals of USD
         uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
-        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenB), 18);
+        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
         uint idealAUsd = debtAUsd.add(debtBUsd).mul(currentWeightA()).div(1e18);
         uint idealBUsd = debtAUsd.add(debtBUsd).sub(idealAUsd);
