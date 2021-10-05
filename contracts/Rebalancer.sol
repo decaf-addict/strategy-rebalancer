@@ -42,6 +42,10 @@ contract Rebalancer {
     // publicSwap flips on and off depending on weight balance conditions.
     // This acts as a master switch to stay disabled during emergencies.
     bool public stayDisabled;
+
+    uint public upperBound;
+    uint public lowerBound;
+
     modifier toOnlyAllowed(address _to){
         require(
             _to == address(providerA) ||
@@ -94,6 +98,9 @@ contract Rebalancer {
         uint[] memory initialWeights = new uint[](2);
         initialWeights[0] = uint(0.5 * 1e18);
         initialWeights[1] = uint(0.5 * 1e18);
+
+        upperBound = 0.98 * 1e18;
+        lowerBound = 0.02 * 1e18;
 
         lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
         lbp = ILiquidityBootstrappingPool(
@@ -197,6 +204,7 @@ contract Rebalancer {
     // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage
     // since positive slippage for user = negative slippage for pool aka loss for strat
     function shouldTend() public view returns (bool _shouldTend){
+
         // 18 == decimals of USD
         uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
         uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
@@ -513,6 +521,14 @@ contract Rebalancer {
     // true = public swap will stay disabled until this is flipped to true
     function setStayDisabled(bool _disable) public onlyVaultManagers {
         stayDisabled = _disable;
+    }
+
+    function setWeightBounds(uint _upper, uint _lower){
+        require(_upper < .99 * 1e18);
+        require(_lower > .01 * 1e18);
+        require(_upper + lowerBound == 1 * 1e18);
+        upperBound = _upper;
+        lowerBound = _lower;
     }
 
     receive() external payable {}
