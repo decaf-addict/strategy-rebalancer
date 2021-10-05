@@ -201,8 +201,8 @@ contract Rebalancer {
         uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
         uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
-        uint idealAUsd = debtAUsd.add(debtBUsd).mul(currentWeightA()).div(1e18);
-        uint idealBUsd = debtAUsd.add(debtBUsd).sub(idealAUsd);
+        uint idealAUsd = debtTotalUsd.mul(currentWeightA()).div(1e18);
+        uint idealBUsd = debtTotalUsd.sub(idealAUsd);
 
         uint weight = debtAUsd.mul(1e18).div(debtTotalUsd);
         if (weight > 0.95 * 1e18 || weight < 0.05 * 1e18) {
