@@ -486,7 +486,7 @@ contract Rebalancer {
         return lbp.getNormalizedWeights()[1];
     }
 
-    function _decimals(IERC20 _token) internal view returns (uint _decimals){
+    function _decimals(IERC20 _token) internal view returns (uint){
         return ERC20(address(_token)).decimals();
     }
 

@@ -125,7 +125,7 @@ contract JointProvider is BaseStrategy {
         // Report overpayment as profit
         if (_debtPayment > _debtOutstanding) {
             _profit += _debtPayment.sub(_debtOutstanding);
-            _debtPayment = _debtPayment.sub(_profit);
+            _debtPayment = _debtOutstanding;
         }
 
         beforeWant = balanceOfWant();
