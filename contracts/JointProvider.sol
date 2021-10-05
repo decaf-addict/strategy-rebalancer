@@ -108,6 +108,10 @@ contract JointProvider is BaseStrategy {
     }
 
     function prepareReturn(uint _debtOutstanding) internal override returns (uint _profit, uint _loss, uint _debtPayment) {
+        uint beforeWant = balanceOfWant();
+        rebalancer.collectTradingFees();
+        _profit += balanceOfWant().sub(beforeWant);
+
         if (_debtOutstanding > 0) {
             if (vault.strategies(address(this)).debtRatio == 0) {
                 _debtPayment = liquidateAllPositions();
