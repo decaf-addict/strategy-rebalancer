@@ -43,7 +43,7 @@ contract Rebalancer {
         require(
             _to == address(providerA) ||
             _to == address(providerB) ||
-            _to == providerA.getGovernance(), "!allowed");
+            providerA.isVaultManagers(_to), "!allowed");
         _;
     }
 
@@ -51,17 +51,12 @@ contract Rebalancer {
         require(
             msg.sender == address(providerA) ||
             msg.sender == address(providerB) ||
-            msg.sender == providerA.getGovernance(), "!allowed");
+            providerA.isVaultManagers(msg.sender), "!allowed");
         _;
     }
 
-    modifier onlyGov{
-        require(msg.sender == providerA.getGovernance(), "!governance");
-        _;
-    }
-
-    modifier onlyAuthorized() {
-        require(msg.sender == providerA.strategist() || msg.sender == providerA.getGovernance(), "!authorized");
+    modifier onlyVaultManagers{
+        require(providerA.isVaultManagers(msg.sender), "!governance");
         _;
     }
 
@@ -380,7 +375,7 @@ contract Rebalancer {
         tokenB.approve(address(uniswap), max);
     }
 
-    function setReward(address _reward) public onlyGov {
+    function setReward(address _reward) public onlyVaultManagers {
         reward.approve(address(uniswap), 0);
         reward = IERC20(_reward);
         reward.approve(address(uniswap), max);
@@ -399,15 +394,15 @@ contract Rebalancer {
         return _path;
     }
 
-    function setSwapFee(uint _fee) external onlyAuthorized {
+    function setSwapFee(uint _fee) external onlyVaultManagers {
         lbp.setSwapFeePercentage(_fee);
     }
 
-    function setPublicSwap(bool _isPublic) external onlyGov {
+    function setPublicSwap(bool _isPublic) external onlyVaultManagers {
         lbp.setSwapEnabled(_isPublic);
     }
 
-    function setTendBuffer(uint _newBuffer) external onlyAuthorized {
+    function setTendBuffer(uint _newBuffer) external onlyVaultManagers {
         require(_newBuffer < lbp.getSwapFeePercentage());
         tendBuffer = _newBuffer;
     }
