@@ -520,7 +520,7 @@ contract Rebalancer {
         stayDisabled = _disable;
     }
 
-    function setWeightBounds(uint _upper, uint _lower){
+    function setWeightBounds(uint _upper, uint _lower) public onlyVaultManagers {
         require(_upper < .99 * 1e18);
         require(_lower > .01 * 1e18);
         require(_upper + lowerBound == 1 * 1e18);
