@@ -5,8 +5,8 @@ import util
 
 
 def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer,
-                         user,  gov, setup, rando, transferToRando, chain, testSetup, reward, reward_whale,
-                         whaleA, whaleB):
+                  user, gov, setup, rando, transferToRando, chain, testSetup, reward, reward_whale,
+                  whaleA, whaleB):
     beforeHarvestA = rebalancer.currentWeightA()
     beforeHarvestB = rebalancer.currentWeightB()
 
@@ -21,7 +21,7 @@ def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA
     util.simulate_bal_reward(rebalancer, reward, reward_whale)
 
     ppsBeforeA = vaultA.pricePerShare()
-    ppsBeforeB = vaultA.pricePerShare()
+    ppsBeforeB = vaultB.pricePerShare()
 
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
@@ -44,8 +44,12 @@ def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA
     util.stateOfStrat("after airdrop", rebalancer, providerA, providerB)
 
     ppsBeforeA = vaultA.pricePerShare()
-    ppsBeforeB = vaultA.pricePerShare()
+    ppsBeforeB = vaultB.pricePerShare()
 
+    # puts the airdrops into the lp
+    providerA.tend({"from": gov})
+
+    # harvest the gains from airdrop
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
 
@@ -56,4 +60,3 @@ def test_airdrops(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA
 
     assert vaultA.pricePerShare() > ppsBeforeA
     assert vaultB.pricePerShare() > ppsBeforeB
-
