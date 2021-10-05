@@ -502,6 +502,16 @@ contract Rebalancer {
         }
     }
 
+    function getPublicSwap() public view returns (bool){
+        return lbp.getSwapEnabled();
+    }
+
+    // false = public swap will automatically be enabled when conditions are good
+    // true = public swap will stay disabled until this is flipped to true
+    function setStayDisabled(bool _disable) public onlyVaultManagers {
+        stayDisabled = _disable;
+    }
+
     receive() external payable {}
 }
 
