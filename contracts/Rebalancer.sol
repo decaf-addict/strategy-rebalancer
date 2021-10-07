@@ -212,6 +212,8 @@ contract Rebalancer {
         uint idealAUsd = debtTotalUsd.mul(currentWeightA()).div(1e18);
         uint idealBUsd = debtTotalUsd.sub(idealAUsd);
 
+        if (debtAUsd == 0 || debtBUsd == 0) return;
+
         uint weight = debtAUsd.mul(1e18).div(debtTotalUsd);
 
         // If it hits weight boundary, tend so that we can disable swaps. If already disabled, no need to tend again.
