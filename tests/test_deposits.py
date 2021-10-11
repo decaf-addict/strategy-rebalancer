@@ -44,7 +44,7 @@ def test_2_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB, vaul
     assert pytest.approx(tokenA.balanceOf(user), rel=RELATIVE_APPROX) == amountA
 
 
-# test deposits that highly skews the pool to one side (over the 2%-98% pool ratio limit)
+# test deposits that highly skews the pool to one side (over the 4%-96% pool ratio limit)
 def test_skewed_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB, vaultA, vaultB, rebalancer, user,
                          gov, setup, RELATIVE_APPROX):
     tokenA.approve(vaultA.address, amountA, {"from": user})
@@ -54,7 +54,7 @@ def test_skewed_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB,
 
     # large A small B deposit
     amountB = 1 * 1e18
-    tokenB.approve(vaultB.address, amountB, {"from": user})
+    tokenB.approve(vaultB.address, 2 ** 256 - 1, {"from": user})
     vaultB.deposit(amountB, {"from": user})
     assert tokenB.balanceOf(vaultB.address) == amountB
     print(f'deposited {amountB / 1e18} tokenB to vaultB\n')
@@ -65,13 +65,34 @@ def test_skewed_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB,
     providerA.harvest({"from": gov})
     providerB.harvest({"from": gov})
 
-    afterBpt = rebalancer.balanceOfLbp()
-    util.stateOfStrat("after harvest", rebalancer, providerA, providerB)
+    # public swap is paused bc deposit would be skewed
+    assert rebalancer.shouldTend() == False
+    assert rebalancer.getPublicSwap() == False
+
+    util.stateOfStrat("after harvest skewed", rebalancer, providerA, providerB)
 
     assert providerA.balanceOfWant() == 0
     assert providerB.balanceOfWant() == 0
 
+    # add more debt so it's not skewed anymore
+    amountB2 = 999 * 1e18
+    vaultB.deposit(amountB2, {"from": user})
+
+    providerB.harvest({"from": gov})
+
+    util.stateOfStrat("after harvest normal", rebalancer, providerA, providerB)
+
+    assert rebalancer.getPublicSwap() == True
+
+    afterBpt = rebalancer.balanceOfLbp()
     assert afterBpt > beforeBpt
 
     vaultA.withdraw({"from": user})
     assert pytest.approx(tokenA.balanceOf(user), rel=RELATIVE_APPROX) == amountA
+
+    util.stateOfStrat("after withdraw A", rebalancer, providerA, providerB)
+
+    vaultB.withdraw({"from": user})
+    assert pytest.approx(tokenB.balanceOf(user), rel=RELATIVE_APPROX) == amountB + amountB2
+
+    util.stateOfStrat("after withdraw B", rebalancer, providerA, providerB)

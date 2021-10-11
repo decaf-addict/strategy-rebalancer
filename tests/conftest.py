@@ -95,7 +95,7 @@ def transferToRando(accounts, tokenA, tokenB, rando, whaleA, whaleB):
 
     tokenA.transfer(rando, amount, {"from": whaleA})
 
-    amount = 1000 * 10 ** tokenB.decimals()
+    amount = 1_000 * 10 ** tokenB.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
@@ -136,6 +136,7 @@ def vaultA(pm, gov, rewards, guardian, management, tokenA):
     vault.initialize(tokenA, gov, rewards, "", "", guardian, management, {"from": gov})
     vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
+    vault.setManagementFee(0, {"from": gov})
     yield vault
 
 
@@ -146,6 +147,7 @@ def vaultB(pm, gov, rewards, guardian, management, tokenB):
     vault.initialize(tokenB, gov, rewards, "", "", guardian, management, {"from": gov})
     vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
+    vault.setManagementFee(0, {"from": gov})
     yield vault
 
 
@@ -248,7 +250,7 @@ def setup(rebalancer, providerA, providerB, gov, user, strategist):
     providerB.setRebalancer(rebalancer, {'from': gov})
 
     # 0.3%
-    rebalancer.setSwapFee(0.003 * 1e18, {'from': strategist})
+    rebalancer.setSwapFee(0.003 * 1e18, {'from': gov})
 
 
 @pytest.fixture
@@ -256,7 +258,7 @@ def setupTestOracle(rebalancerTestOracle, providerATestOracle, providerBTestOrac
     providerATestOracle.setRebalancer(rebalancerTestOracle, {'from': gov})
     providerBTestOracle.setRebalancer(rebalancerTestOracle, {'from': gov})
 
-    rebalancerTestOracle.setSwapFee(0.003 * 1e18, {'from': strategist})
+    rebalancerTestOracle.setSwapFee(0.003 * 1e18, {'from': gov})
 
 
 @pytest.fixture

@@ -41,7 +41,7 @@ contract JointProvider is BaseStrategy {
 
     function _initializeStrat(address _oracle) internal {
         oracle = IPriceFeed(_oracle);
-        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012); // health.ychad.eth
+        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012);
     }
 
     function setRebalancer(address payable _rebalancer) external onlyGovernance {
@@ -108,6 +108,10 @@ contract JointProvider is BaseStrategy {
     }
 
     function prepareReturn(uint _debtOutstanding) internal override returns (uint _profit, uint _loss, uint _debtPayment) {
+        uint beforeWant = balanceOfWant();
+        rebalancer.collectTradingFees();
+        _profit += balanceOfWant().sub(beforeWant);
+
         if (_debtOutstanding > 0) {
             if (vault.strategies(address(this)).debtRatio == 0) {
                 _debtPayment = liquidateAllPositions();
@@ -120,16 +124,13 @@ contract JointProvider is BaseStrategy {
         // Interestingly, if you overpay on debt payment, the overpaid amount just sits in the strat.
         // Report overpayment as profit
         if (_debtPayment > _debtOutstanding) {
-            _profit = _debtPayment.sub(_debtOutstanding);
-            _debtPayment = _debtPayment.sub(_profit);
+            _profit += _debtPayment.sub(_debtOutstanding);
+            _debtPayment = _debtOutstanding;
         }
 
-        uint beforeWant = balanceOfWant();
-        rebalancer.collectTradingFees();
+        beforeWant = balanceOfWant();
         rebalancer.sellRewards();
-        uint afterWant = balanceOfWant();
-
-        _profit += afterWant.sub(beforeWant);
+        _profit += balanceOfWant().sub(beforeWant);
 
         if (_profit > _loss) {
             _profit = _profit.sub(_loss);
@@ -204,7 +205,7 @@ contract JointProvider is BaseStrategy {
         return oracle.decimals();
     }
 
-    function getGovernance() public view returns (address){
-        return vault.governance();
+    function isVaultManagers(address _address) public view returns (bool){
+        return _address == vault.governance() || _address == vault.management();
     }
 }

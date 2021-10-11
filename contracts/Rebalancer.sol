@@ -39,11 +39,18 @@ contract Rebalancer {
     bool internal initJoin;
     uint public tendBuffer;
 
+    // publicSwap flips on and off depending on weight balance conditions.
+    // This acts as a master switch to stay disabled during emergencies.
+    bool public stayDisabled;
+
+    uint public upperBound;
+    uint public lowerBound;
+
     modifier toOnlyAllowed(address _to){
         require(
             _to == address(providerA) ||
             _to == address(providerB) ||
-            _to == providerA.getGovernance(), "!allowed");
+            providerA.isVaultManagers(_to), "!allowed");
         _;
     }
 
@@ -51,17 +58,12 @@ contract Rebalancer {
         require(
             msg.sender == address(providerA) ||
             msg.sender == address(providerB) ||
-            msg.sender == providerA.getGovernance(), "!allowed");
+            providerA.isVaultManagers(msg.sender), "!allowed");
         _;
     }
 
-    modifier onlyGov{
-        require(msg.sender == providerA.getGovernance(), "!governance");
-        _;
-    }
-
-    modifier onlyAuthorized() {
-        require(msg.sender == providerA.strategist() || msg.sender == providerA.getGovernance(), "!authorized");
+    modifier onlyVaultManagers{
+        require(providerA.isVaultManagers(msg.sender), "!governance");
         _;
     }
 
@@ -96,6 +98,9 @@ contract Rebalancer {
         uint[] memory initialWeights = new uint[](2);
         initialWeights[0] = uint(0.5 * 1e18);
         initialWeights[1] = uint(0.5 * 1e18);
+
+        upperBound = 0.98 * 1e18;
+        lowerBound = 0.02 * 1e18;
 
         lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
         lbp = ILiquidityBootstrappingPool(
@@ -199,33 +204,41 @@ contract Rebalancer {
     // If positive slippage caused by market movement is more than our swap fee, adjust position to erase positive slippage
     // since positive slippage for user = negative slippage for pool aka loss for strat
     function shouldTend() public view returns (bool _shouldTend){
+
         // 18 == decimals of USD
         uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
-        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenB), 18);
+        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
-        uint idealAUsd = debtAUsd.add(debtBUsd).mul(currentWeightA()).div(1e18);
-        uint idealBUsd = debtAUsd.add(debtBUsd).sub(idealAUsd);
+        uint idealAUsd = debtTotalUsd.mul(currentWeightA()).div(1e18);
+        uint idealBUsd = debtTotalUsd.sub(idealAUsd);
+
+        if (debtAUsd == 0 || debtBUsd == 0) return false;
 
         uint weight = debtAUsd.mul(1e18).div(debtTotalUsd);
-        if (weight > 0.95 * 1e18 || weight < 0.05 * 1e18) {
-            return true;
+
+        // If it hits weight boundary, tend so that we can disable swaps. If already disabled, no need to tend again.
+        if (weight >= upperBound || weight <= lowerBound) {
+            return getPublicSwap();
+        } else if (!getPublicSwap()) {
+            // If it's not at weight boundary, it's safe again to enable swap
+            return !stayDisabled;
         }
 
-        uint amountIn = _adjustDecimals(idealAUsd.sub(debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed()), 18, _decimals(tokenA));
-        uint amountOutIfNoSlippage = _adjustDecimals(debtBUsd.sub(idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed()), 18, _decimals(tokenB));
+        uint amountIn;
+        uint amountOutIfNoSlippage;
         uint amountOut;
 
-
         if (idealAUsd > debtAUsd) {
+            amountIn = _adjustDecimals(idealAUsd.sub(debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed()), 18, _decimals(tokenA));
+            amountOutIfNoSlippage = _adjustDecimals(debtBUsd.sub(idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed()), 18, _decimals(tokenB));
             amountOut = BalancerMathLib.calcOutGivenIn(pooledBalanceA(), currentWeightA(), pooledBalanceB(), currentWeightB(), amountIn, 0);
         } else {
-            uint temp = amountIn;
-            amountIn = amountOutIfNoSlippage;
-            amountOutIfNoSlippage = temp;
+            amountIn = _adjustDecimals(debtBUsd.sub(idealBUsd).mul(10 ** providerB.getPriceFeedDecimals()).div(providerB.getPriceFeed()), 18, _decimals(tokenB));
+            amountOutIfNoSlippage = _adjustDecimals(idealAUsd.sub(debtAUsd).mul(10 ** providerA.getPriceFeedDecimals()).div(providerA.getPriceFeed()), 18, _decimals(tokenA));
             amountOut = BalancerMathLib.calcOutGivenIn(pooledBalanceB(), currentWeightB(), pooledBalanceA(), currentWeightA(), amountIn, 0);
         }
 
-        // maximum positive slippage for user trading. Evaluate that against our fees.
+        // maximum positive slippage for arber. Evaluate that against our fees.
         if (amountOut > amountOutIfNoSlippage) {
             uint slippage = amountOut.sub(amountOutIfNoSlippage).mul(10 ** (idealAUsd > debtAUsd ? _decimals(tokenB) : _decimals(tokenA))).div(amountOutIfNoSlippage);
             return slippage > lbp.getSwapFeePercentage().sub(tendBuffer);
@@ -247,16 +260,24 @@ contract Rebalancer {
         }
 
         // 18 == decimals of USD
-        uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()), _decimals(tokenA), 18);
-        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()), _decimals(tokenB), 18);
+        uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
+        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
 
         // update weights to their appropriate priced balances
         uint[] memory newWeights = new uint[](2);
-        newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), 0.9 * 1e18), 0.1 * 1e18);
+        newWeights[0] = Math.max(Math.min(debtAUsd.mul(1e18).div(debtTotalUsd), upperBound), lowerBound);
         newWeights[1] = 1e18 - newWeights[0];
+
+        // If adjustment hits weight boundary, turn off trades. Adjust debt ratio manually until it's not at boundary anymore.
+        if (newWeights[0] == lowerBound || newWeights[1] == lowerBound) {
+            lbp.setSwapEnabled(false);
+            return;
+        } else if (!getPublicSwap() && !stayDisabled) {
+            lbp.setSwapEnabled(true);
+        }
+
         lbp.updateWeightsGradually(now, now, newWeights);
-        bool atLimit = newWeights[0] == 0.9 * 1e18 || newWeights[0] == 0.1 * 1e18;
 
         uint looseA = looseBalanceA();
         uint looseB = looseBalanceB();
@@ -265,28 +286,13 @@ contract Rebalancer {
         maxAmountsIn[0] = looseA;
         maxAmountsIn[1] = looseB;
 
-        // re-enter pool with max funds at the appropriate weights
+        // Re-enter pool with max funds at the appropriate weights.
         uint[] memory amountsIn = new uint[](2);
         amountsIn[0] = looseA;
         amountsIn[1] = looseB;
 
-        // 24 comes from 96%/4%. Limiting factor is the asset that hits the lower bound. Use that to calculate
-        // what the other amount should be
-        if (newWeights[0] == 0.1 * 1e18) {
-            amountsIn[1] = _adjustDecimals(
-                looseA.mul(24).mul(providerA.getPriceFeed()).div(providerB.getPriceFeed()),
-                _decimals(tokenA),
-                _decimals(tokenB)
-            );
-        } else if (newWeights[1] == 0.1 * 1e18) {
-            amountsIn[0] = _adjustDecimals(
-                looseB.mul(24).mul(providerB.getPriceFeed()).div(providerA.getPriceFeed()),
-                _decimals(tokenB),
-                _decimals(tokenA)
-            );
-        }
-
         bytes memory userData;
+
         if (initJoin) {
             userData = abi.encode(IBalancerVault.JoinKind.INIT, amountsIn);
             initJoin = false;
@@ -295,7 +301,6 @@ contract Rebalancer {
         }
         IBalancerVault.JoinPoolRequest memory request = IBalancerVault.JoinPoolRequest(assets, maxAmountsIn, userData, false);
         bVault.joinPool(lbp.getPoolId(), address(this), address(this), request);
-
     }
 
     function liquidatePosition(uint _amountNeeded, IERC20 _token, address _to) public toOnlyAllowed(_to) onlyAllowed returns (uint _liquidated, uint _short){
@@ -380,7 +385,7 @@ contract Rebalancer {
         tokenB.approve(address(uniswap), max);
     }
 
-    function setReward(address _reward) public onlyGov {
+    function setReward(address _reward) public onlyVaultManagers {
         reward.approve(address(uniswap), 0);
         reward = IERC20(_reward);
         reward.approve(address(uniswap), max);
@@ -399,15 +404,15 @@ contract Rebalancer {
         return _path;
     }
 
-    function setSwapFee(uint _fee) external onlyAuthorized {
+    function setSwapFee(uint _fee) external onlyVaultManagers {
         lbp.setSwapFeePercentage(_fee);
     }
 
-    function setPublicSwap(bool _isPublic) external onlyGov {
+    function setPublicSwap(bool _isPublic) external onlyVaultManagers {
         lbp.setSwapEnabled(_isPublic);
     }
 
-    function setTendBuffer(uint _newBuffer) external onlyAuthorized {
+    function setTendBuffer(uint _newBuffer) external onlyVaultManagers {
         require(_newBuffer < lbp.getSwapFeePercentage());
         tendBuffer = _newBuffer;
     }
@@ -483,7 +488,7 @@ contract Rebalancer {
         return lbp.getNormalizedWeights()[1];
     }
 
-    function _decimals(IERC20 _token) internal view returns (uint _decimals){
+    function _decimals(IERC20 _token) internal view returns (uint){
         return ERC20(address(_token)).decimals();
     }
 
@@ -505,6 +510,24 @@ contract Rebalancer {
         } else {
             return _amount.mul(10 ** _decimalsTo.sub(_decimalsFrom));
         }
+    }
+
+    function getPublicSwap() public view returns (bool){
+        return lbp.getSwapEnabled();
+    }
+
+    // false = public swap will automatically be enabled when conditions are good
+    // true = public swap will stay disabled until this is flipped to true
+    function setStayDisabled(bool _disable) public onlyVaultManagers {
+        stayDisabled = _disable;
+    }
+
+    function setWeightBounds(uint _upper, uint _lower) public onlyVaultManagers {
+        require(_upper < .99 * 1e18);
+        require(_lower > .01 * 1e18);
+        require(_upper + lowerBound == 1 * 1e18);
+        upperBound = _upper;
+        lowerBound = _lower;
     }
 
     receive() external payable {}

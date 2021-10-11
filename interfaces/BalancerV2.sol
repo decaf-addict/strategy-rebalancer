@@ -48,6 +48,8 @@ interface ILiquidityBootstrappingPool {
 
     function setSwapEnabled(bool) external;
 
+    function getSwapEnabled() external view returns (bool);
+
     function getVault() external view returns (address);
 
     function onSwap(

@@ -18,7 +18,7 @@ interface IJointProvider {
 
     function getPriceFeedDecimals() external view returns (uint256 _dec);
 
-    function getGovernance() external view returns (address);
+    function isVaultManagers(address) external view returns (bool);
 
     function strategist() external view returns (address);
 
