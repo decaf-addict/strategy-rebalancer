@@ -19,7 +19,7 @@ interface IRebalancer {
 
     function sellRewards() external;
 
-    function adjustPosition() external;
+    function adjustPosition(uint _amountWithdrawn, IERC20 _token) external;
 
     function liquidatePosition(uint _amountNeeded, IERC20 _token, address _to) external;
 

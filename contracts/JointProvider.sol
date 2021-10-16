@@ -114,10 +114,10 @@ contract JointProvider is BaseStrategy {
 
         if (_debtOutstanding > 0) {
             if (vault.strategies(address(this)).debtRatio == 0) {
-                _debtPayment = liquidateAllPositions();
+                _debtPayment = _liquidateAllPositions();
                 _loss = _debtOutstanding > _debtPayment ? _debtOutstanding.sub(_debtPayment) : 0;
             } else {
-                (_debtPayment, _loss) = liquidatePosition(_debtOutstanding);
+                (_debtPayment, _loss) = _liquidatePosition(_debtOutstanding);
             }
         }
 
@@ -141,11 +141,19 @@ contract JointProvider is BaseStrategy {
         }
     }
 
+    // called by tend. 0 bc there's no change in debt
     function adjustPosition(uint _debtOutstanding) internal override {
-        rebalancer.adjustPosition();
+        rebalancer.adjustPosition(0, want);
     }
 
-    function liquidatePosition(uint _amountNeeded) internal override returns (uint _liquidatedAmount, uint _loss) {
+    // Called during withdraw in order to rebalance to the new debt.
+    // This is necessary so that withdraws will rebalance immediately (instead of waiting for keeper)
+    function _adjustPosition(uint _amountWithdrawn) internal {
+        rebalancer.adjustPosition(_amountWithdrawn, want);
+    }
+
+    // without adjustPosition. Called internally by prepareReturn. Harvests will call adjustPosition after.
+    function _liquidatePosition(uint _amountNeeded) internal returns (uint _liquidatedAmount, uint _loss) {
         uint loose = balanceOfWant();
         uint pooled = rebalancer.pooledBalance(rebalancer.tokenIndex(want));
 
@@ -164,9 +172,22 @@ contract JointProvider is BaseStrategy {
         }
     }
 
-    function liquidateAllPositions() internal override returns (uint _amountFreed) {
+    // called when user withdraws from vault. Rebalance after
+    function liquidatePosition(uint _amountNeeded) internal override returns (uint _liquidatedAmount, uint _loss) {
+        (_liquidatedAmount, _loss) = _liquidatePosition(_amountNeeded);
+        _adjustPosition(_amountNeeded);
+    }
+
+    // without adjustPosition. Called internally by prepareReturn. Harvests will call adjustPosition after.
+    function _liquidateAllPositions() internal returns (uint _amountFreed) {
         rebalancer.liquidateAllPositions(want, address(this));
         return want.balanceOf(address(this));
+    }
+
+    // called when user withdraws from vault. Rebalance after
+    function liquidateAllPositions() internal override returns (uint _amountFreed) {
+        _amountFreed = _liquidateAllPositions();
+        _adjustPosition(type(uint).max);
     }
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary

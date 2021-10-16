@@ -212,8 +212,6 @@ contract Rebalancer {
         uint idealAUsd = debtTotalUsd.mul(currentWeightA()).div(1e18);
         uint idealBUsd = debtTotalUsd.sub(idealAUsd);
 
-        if (debtAUsd == 0 || debtBUsd == 0) return false;
-
         uint weight = debtAUsd.mul(1e18).div(debtTotalUsd);
 
         // If it hits weight boundary, tend so that we can disable swaps. If already disabled, no need to tend again.
@@ -247,11 +245,19 @@ contract Rebalancer {
         }
     }
 
-    // pull from providers
-    function adjustPosition() public onlyAllowed {
-        if (providerA.totalDebt() == 0 || providerB.totalDebt() == 0) return;
-        tokenA.transferFrom(address(providerA), address(this), providerA.balanceOfWant());
-        tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
+    // Pull from providers
+    // @param _amountWithdrawn takes into account the difference that'll get subtracted to the debt after a withdraw.
+    // This is a way to adjustPosition immediately after withdraw with that new totalDebt without waiting for keeper to adjustPosition in a future block.
+    function adjustPosition(uint _amountWithdrawn, IERC20 _token) public onlyAllowed {
+        require(_token == tokenA || _token == tokenB);
+        uint totalDebtA = providerA.totalDebt() > _amountWithdrawn ? (_token == tokenA ? providerA.totalDebt().sub(_amountWithdrawn) : providerA.totalDebt()) : 0;
+        uint totalDebtB = providerB.totalDebt() > _amountWithdrawn ? (_token == tokenB ? providerB.totalDebt().sub(_amountWithdrawn) : providerB.totalDebt()) : 0;
+
+        // If adjustPosition is from a withdraw, don't pull funds back into rebalancer. Funds need to sit in providers to be pulled by vault
+        if (_amountWithdrawn == 0) {
+            tokenA.transferFrom(address(providerA), address(this), providerA.balanceOfWant());
+            tokenB.transferFrom(address(providerB), address(this), providerB.balanceOfWant());
+        }
 
         // exit entire position
         uint lbpBalance = balanceOfLbp();
@@ -260,9 +266,11 @@ contract Rebalancer {
         }
 
         // 18 == decimals of USD
-        uint debtAUsd = _adjustDecimals(providerA.totalDebt().mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
-        uint debtBUsd = _adjustDecimals(providerB.totalDebt().mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
+        uint debtAUsd = _adjustDecimals(totalDebtA.mul(providerA.getPriceFeed()).div(10 ** providerA.getPriceFeedDecimals()), _decimals(tokenA), 18);
+        uint debtBUsd = _adjustDecimals(totalDebtB.mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
+
+        if (debtTotalUsd == 0) return;
 
         // update weights to their appropriate priced balances
         uint[] memory newWeights = new uint[](2);

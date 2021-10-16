@@ -13,7 +13,7 @@ def test_permissions(providerA, providerB, tokenA, tokenB, amountA, amountB, vau
         rebalancer.sellRewards({'from': rando})
 
     with brownie.reverts():
-        rebalancer.adjustPosition({'from': rando})
+        rebalancer.adjustPosition(12345, tokenB, {'from': rando})
 
     with brownie.reverts():
         rebalancer.liquidatePosition(1, tokenA, rando, {'from': rando})
