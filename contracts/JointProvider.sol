@@ -143,7 +143,7 @@ contract JointProvider is BaseStrategy {
 
     // called by tend. 0 bc there's no change in debt
     function adjustPosition(uint _debtOutstanding) internal override {
-        rebalancer.adjustPosition(0, want);
+        _adjustPosition(0);
     }
 
     // Called during withdraw in order to rebalance to the new debt.
@@ -184,7 +184,7 @@ contract JointProvider is BaseStrategy {
         return want.balanceOf(address(this));
     }
 
-    // called when user withdraws from vault. Rebalance after
+    // called during emergency exit. Rebalance after to halt pool
     function liquidateAllPositions() internal override returns (uint _amountFreed) {
         _amountFreed = _liquidateAllPositions();
         _adjustPosition(type(uint).max);
