@@ -11,10 +11,14 @@ def test_triggers(providerATestOracle, providerBTestOracle, tokenA, tokenB, amou
     testOracleB.setPrice(oracleB.latestAnswer(), {'from': rando})
     assert rebalancerTestOracle.shouldTend() == True
     providerATestOracle.tend({'from':gov})
+    assert rebalancerTestOracle.getPublicSwap() == False
     assert rebalancerTestOracle.shouldTend() == False
 
     providerATestOracle.harvest({"from": gov})
     providerBTestOracle.harvest({"from": gov})
+
+    assert rebalancerTestOracle.getPublicSwap() == True
+    assert providerATestOracle.tendTrigger(0) == False
 
     # changes too small to require tend = ~0.4% <(swap fee * 2)
     testOracleA.setPrice(oracleA.latestAnswer() * .998, {'from': rando})
