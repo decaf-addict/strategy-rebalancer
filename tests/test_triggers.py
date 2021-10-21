@@ -9,6 +9,9 @@ def test_triggers(providerATestOracle, providerBTestOracle, tokenA, tokenB, amou
                   user, gov, setupTestOracle, rando, transferToRando, testSetup, reward, reward_whale):
     testOracleA.setPrice(oracleA.latestAnswer(), {'from': rando})
     testOracleB.setPrice(oracleB.latestAnswer(), {'from': rando})
+    assert rebalancerTestOracle.shouldTend() == True
+    providerATestOracle.tend({'from':gov})
+    assert rebalancerTestOracle.shouldTend() == False
 
     providerATestOracle.harvest({"from": gov})
     providerBTestOracle.harvest({"from": gov})

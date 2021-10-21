@@ -211,8 +211,7 @@ contract Rebalancer {
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
         uint idealAUsd = debtTotalUsd.mul(currentWeightA()).div(1e18);
         uint idealBUsd = debtTotalUsd.sub(idealAUsd);
-
-        uint weight = debtAUsd.mul(1e18).div(debtTotalUsd);
+        uint weight = debtTotalUsd == 0 ? 0 : debtAUsd.mul(1e18).div(debtTotalUsd);
 
         // If it hits weight boundary, tend so that we can disable swaps. If already disabled, no need to tend again.
         if (weight >= upperBound || weight <= lowerBound) {
@@ -270,7 +269,10 @@ contract Rebalancer {
         uint debtBUsd = _adjustDecimals(totalDebtB.mul(providerB.getPriceFeed()).div(10 ** providerB.getPriceFeedDecimals()), _decimals(tokenB), 18);
         uint debtTotalUsd = debtAUsd.add(debtBUsd);
 
-        if (debtTotalUsd == 0) return;
+        if (debtTotalUsd == 0) {
+            lbp.setSwapEnabled(false);
+            return;
+        }
 
         // update weights to their appropriate priced balances
         uint[] memory newWeights = new uint[](2);
