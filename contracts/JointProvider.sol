@@ -44,7 +44,7 @@ contract JointProvider is BaseStrategy {
         healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012);
     }
 
-    function setRebalancer(address payable _rebalancer) external onlyGovernance {
+    function setRebalancer(address payable _rebalancer) external onlyVaultManagers {
         want.approve(_rebalancer, max);
         rebalancer = IRebalancer(_rebalancer);
         require(rebalancer.tokenA() == want || rebalancer.tokenB() == want);
