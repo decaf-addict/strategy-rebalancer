@@ -91,6 +91,16 @@ contract Rebalancer {
 
         minAmountsOut = new uint[](2);
         tendBuffer = 0.001 * 1e18;
+        upperBound = 0.98 * 1e18;
+        lowerBound = 0.02 * 1e18;
+
+        lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
+    }
+
+    // split init to 2 methods in order to decrease deployment gas since full deployment requires ~10m and ftm limit is 7m
+    // can only be called once.
+    function init2() public {
+        require(lbp == ILiquidityBootstrappingPool(0x0));
 
         IERC20[] memory tokens = new IERC20[](2);
         tokens[0] = tokenA;
@@ -99,10 +109,6 @@ contract Rebalancer {
         initialWeights[0] = uint(0.5 * 1e18);
         initialWeights[1] = uint(0.5 * 1e18);
 
-        upperBound = 0.98 * 1e18;
-        lowerBound = 0.02 * 1e18;
-
-        lbpFactory = ILiquidityBootstrappingPoolFactory(_lbpFactory);
         lbp = ILiquidityBootstrappingPool(
             lbpFactory.create(
                 string(abi.encodePacked(name()[0], name()[1])),
