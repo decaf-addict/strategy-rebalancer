@@ -51,82 +51,85 @@ def keeper(accounts):
 @pytest.fixture
 def tokenA(interface):
     # token_address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # USDC
-    token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # YFI
+    token_address = "0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83"  # wftm
+
     yield interface.ERC20(token_address)
 
 
 @pytest.fixture
 def tokenB(interface):
-    token_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"  # WETH
+    token_address = "0x82f0B8B456c1A451378467398982d4834b6829c1"  # mim
+    # token_address = "0x04068DA6C83AFCFA0e13ba15A6696662335D5B75"  # usdc
+    # token_address = "0x29b0Da86e484E1C0029B56e817912d778aC0EC69"  # ftmYFI
+
     yield interface.ERC20(token_address)
 
 
 @pytest.fixture
 def oracleA():
-    feed = "0xA027702dbb89fbd58938e4324ac03B58d812b0E1"  # YFI/USD
-    # feed = "0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6"  # USDC/USD
+    feed = "0xf4766552D15AE4d256Ad41B6cf2933482B0680dc"  # wFTM/USD
 
     yield Contract(feed)
 
 
 @pytest.fixture
 def oracleB():
-    feed = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"  # ETH/USD
+    feed = "0xf4766552D15AE4d256Ad41B6cf2933482B0680dc"  # USDC/USD
+    feed = "0x28de48D3291F31F839274B8d82691c77DF1c5ceD"  # MIM/USD
+
     yield Contract(feed)
 
 
 @pytest.fixture
 def whaleA(accounts):
-    # whale = accounts.at("0x0a59649758aa4d66e25f08dd01271e891fe52199", force=True)  # USDC whale
-    whale = accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True) # YFI whale
+    whale = accounts.at("0x39B3bd37208CBaDE74D0fcBDBb12D606295b430a", force=True) # wftm whale
     return whale
 
 
 @pytest.fixture
 def whaleB(accounts):
-    return accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
+    return accounts.at("0x2dd7C9371965472E5A5fD28fbE165007c61439E1", force=True) # mim whale
 
 
 @pytest.fixture
 def transferToRando(accounts, tokenA, tokenB, rando, whaleA, whaleB):
-    amount = 100 * 10 ** tokenA.decimals()
+    amount = 1_000_000 * 10 ** tokenA.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
     tokenA.transfer(rando, amount, {"from": whaleA})
 
-    amount = 1_000 * 10 ** tokenB.decimals()
+    amount = 1_000_000 * 10 ** tokenB.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
 
-    # WETH whale
     tokenB.transfer(rando, amount, {"from": whaleB})
 
 
 @pytest.fixture
 def amountA(accounts, tokenA, user, whaleA):
-    amount = 100 * 10 ** tokenA.decimals()
+    amount = 1_000_000 * 10 ** tokenA.decimals()
     tokenA.transfer(user, amount, {"from": whaleA})
     yield amount
 
 
 @pytest.fixture
 def amountB(accounts, tokenB, user, whaleB):
-    amount = 1_000 * 10 ** tokenB.decimals()
+    amount = 1_000_000 * 10 ** tokenB.decimals()
     tokenB.transfer(user, amount, {"from": whaleB})
     yield amount
 
 @pytest.fixture
-def weth():
-    token_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+def wftm():
+    token_address = "0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83"
     yield Contract(token_address)
 
 
 @pytest.fixture
-def weth_amout(user, weth):
-    weth_amout = 10 ** weth.decimals()
-    user.transfer(weth, weth_amout)
-    yield weth_amout
+def wftm_amount(user, wftm):
+    wftm_amount = 10 ** wftm.decimals()
+    user.transfer(wftm, wftm_amount)
+    yield wftm_amount
 
 
 @pytest.fixture
@@ -153,7 +156,7 @@ def vaultB(pm, gov, rewards, guardian, management, tokenB):
 
 @pytest.fixture
 def lbpFactory():
-    lbpFactory = Contract("0x751A0bC0e3f75b38e01Cf25bFCE7fF36DE1C87DE")
+    lbpFactory = Contract("0x458368B3724B5a1c1057A00b28eB03FEb5b64968")
     yield lbpFactory
 
 
@@ -225,23 +228,23 @@ def testOracleB(TestOracle, strategist):
 
 @pytest.fixture
 def crv():
-    yield Contract("0xD533a949740bb3306d119CC777fa900bA034cd52")
+    yield Contract("0x1E4F97b9f9F913c46F1632781732927B9019C68b")
 
 
 @pytest.fixture
 def crv_whale(accounts):
-    yield accounts.at("0xd2D43555134dC575BF7279F4bA18809645dB0F1D", force=True)
+    yield accounts.at("0x374C8ACb146407Ef0AE8F82BaAFcF8f4EC1708CF", force=True)
 
 
 # Bal
 @pytest.fixture
 def reward():
-    yield Contract("0xba100000625a3754423978a60c9317c58a424e3D")
+    yield Contract("0xF24Bcf4d1e507740041C9cFd2DddB29585aDCe1e")
 
 
 @pytest.fixture
 def reward_whale(accounts):
-    yield accounts.at("0xb618F903ad1d00d6F7b92f5b0954DcdC056fC533", force=True)
+    yield accounts.at("0xa2503804ec837D1E4699932D58a3bdB767DeA505", force=True)
 
 
 @pytest.fixture

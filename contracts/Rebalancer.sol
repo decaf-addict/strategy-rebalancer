@@ -27,7 +27,7 @@ contract Rebalancer {
     IJointProvider public providerA;
     IJointProvider public providerB;
     IUniswapV2Router02 public uniswap;
-    IWETH9 private constant weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
+    IWETH9 private constant wftm = IWETH9(address(0x21be370D5312f44cB42ce377BC9b8a0cEF1A4C83));
     ILiquidityBootstrappingPoolFactory public lbpFactory;
     ILiquidityBootstrappingPool public lbp;
     IBalancerVault public bVault;
@@ -83,8 +83,8 @@ contract Rebalancer {
 
     function _initialize(address _providerA, address _providerB, address _lbpFactory) internal {
         initJoin = true;
-        uniswap = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
-        reward = IERC20(address(0xba100000625a3754423978a60c9317c58a424e3D));
+        uniswap = IUniswapV2Router02(address(0xF491e7B69E4244ad4002BC14e878a34207E38c29));
+        reward = IERC20(address(0xF24Bcf4d1e507740041C9cFd2DddB29585aDCe1e));
         reward.approve(address(uniswap), max);
 
         _setProviders(_providerA, _providerB);
@@ -402,13 +402,13 @@ contract Rebalancer {
     }
 
     function _getPath(IERC20 _in, IERC20 _out) internal pure returns (address[] memory _path){
-        bool isWeth = address(_in) == address(weth) || address(_out) == address(weth);
+        bool isWeth = address(_in) == address(wftm) || address(_out) == address(wftm);
         _path = new address[](isWeth ? 2 : 3);
         _path[0] = address(_in);
         if (isWeth) {
             _path[1] = address(_out);
         } else {
-            _path[1] = address(weth);
+            _path[1] = address(wftm);
             _path[2] = address(_out);
         }
         return _path;
@@ -439,14 +439,13 @@ contract Rebalancer {
         }
     }
 
-    // TODO switch to ySwapper when ready
     function ethToWant(address _want, uint _amtInWei) external view returns (uint _wantAmount){
         if (_amtInWei > 0) {
             address[] memory path = new address[](2);
-            if (_want == address(weth)) {
+            if (_want == address(wftm)) {
                 return _amtInWei;
             } else {
-                path[0] = address(weth);
+                path[0] = address(wftm);
                 path[1] = _want;
             }
             return uniswap.getAmountsOut(_amtInWei, path)[1];

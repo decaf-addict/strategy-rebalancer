@@ -41,7 +41,6 @@ contract JointProvider is BaseStrategy {
 
     function _initializeStrat(address _oracle) internal {
         oracle = IPriceFeed(_oracle);
-        healthCheck = address(0xDDCea799fF1699e98EDF118e0629A974Df7DF012);
     }
 
     function setRebalancer(address payable _rebalancer) external onlyVaultManagers {

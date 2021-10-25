@@ -42,7 +42,7 @@ def test_2_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB, vaul
 
     weightABefore = rebalancer.currentWeightA()
     # test partial withdraw
-    vaultA.withdraw(50 * 1e18, user, 1, {"from": user})
+    vaultA.withdraw(50000 * 1e18, user, 1, {"from": user})
     # assert withdraw doesn't need a tend afterward
     assert rebalancer.shouldTend() == False
     # makes sure weight updates after withdraw
@@ -63,11 +63,11 @@ def test_skewed_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB,
     print(f'\ndeposited {amountA / 1e18} tokenA to vaultA\n')
 
     # large A small B deposit
-    amountB = 1 * 1e18
+    amountB1 = 1 * 1e18
     tokenB.approve(vaultB.address, 2 ** 256 - 1, {"from": user})
-    vaultB.deposit(amountB, {"from": user})
-    assert tokenB.balanceOf(vaultB.address) == amountB
-    print(f'deposited {amountB / 1e18} tokenB to vaultB\n')
+    vaultB.deposit(amountB1, {"from": user})
+    assert tokenB.balanceOf(vaultB.address) == amountB1
+    print(f'deposited {amountB1 / 1e18} tokenB to vaultB\n')
 
     beforeBpt = rebalancer.balanceOfLbp()
     util.stateOfStrat("before harvest", rebalancer, providerA, providerB)
@@ -85,7 +85,7 @@ def test_skewed_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB,
     assert providerB.balanceOfWant() == 0
 
     # add more debt so it's not skewed anymore
-    amountB2 = 999 * 1e18
+    amountB2 = amountB-amountB1
     vaultB.deposit(amountB2, {"from": user})
 
     providerB.harvest({"from": gov})
@@ -109,6 +109,6 @@ def test_skewed_deposits(providerA, providerB, tokenA, tokenB, amountA, amountB,
     util.stateOfStrat("after withdraw A", rebalancer, providerA, providerB)
 
     vaultB.withdraw({"from": user})
-    assert pytest.approx(tokenB.balanceOf(user), rel=RELATIVE_APPROX) == amountB + amountB2
+    assert pytest.approx(tokenB.balanceOf(user), rel=RELATIVE_APPROX) == amountB1 + amountB2
 
     util.stateOfStrat("after withdraw B", rebalancer, providerA, providerB)
