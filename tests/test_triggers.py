@@ -10,7 +10,7 @@ def test_triggers(providerATestOracle, providerBTestOracle, tokenA, tokenB, amou
     testOracleA.setPrice(oracleA.latestAnswer(), {'from': rando})
     testOracleB.setPrice(oracleB.latestAnswer(), {'from': rando})
     assert rebalancerTestOracle.shouldTend() == True
-    providerATestOracle.tend({'from':gov})
+    providerATestOracle.tend({'from': gov})
     assert rebalancerTestOracle.getPublicSwap() == False
     assert rebalancerTestOracle.shouldTend() == False
 
@@ -31,6 +31,12 @@ def test_triggers(providerATestOracle, providerBTestOracle, tokenA, tokenB, amou
     testOracleA.setPrice(oracleA.latestAnswer() * .95, {'from': rando})
     testOracleB.setPrice(oracleB.latestAnswer() * 1.01, {'from': rando})
 
+    assert providerATestOracle.tendTrigger(0) == True
+    assert providerBTestOracle.tendTrigger(0) == True
+
+    # changes large enough to require tend >(swap fee * 2) the other way
+    testOracleA.setPrice(oracleA.latestAnswer() * 1.01, {'from': rando})
+    testOracleB.setPrice(oracleB.latestAnswer() * 0.95, {'from': rando})
     assert providerATestOracle.tendTrigger(0) == True
     assert providerBTestOracle.tendTrigger(0) == True
 
