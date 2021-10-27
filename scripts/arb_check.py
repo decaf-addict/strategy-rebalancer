@@ -4,7 +4,7 @@ from brownie import Contract, accounts, config, network, project, web3, accounts
 def main():
     aProvider = Contract("0x4050eB90c15F27aa75b5CFcb934a26fDE60Cf9Cb")
     bProvider = Contract("0x580Ae3AeD3E8e8d83c970FA6D2766C0Fb8AF759F")
-    rebalancer = Contract("0xD0A3D8EC180531c8b702d952a1801FB732550abD")
+    rebalancer = Contract("0xD950Ded4ABC40412c896439bD6c2F38B17Ee78f3")
     balancerMathLib = Contract("0xFad59eDB20D1FFE60BB3feD124a4aaae1D225534")
     aFeed = aProvider.getPriceFeed()
     bFeed = bProvider.getPriceFeed()

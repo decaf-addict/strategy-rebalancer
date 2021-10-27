@@ -9,6 +9,8 @@ def stateOfStrat(msg, balancer, providerA, providerB):
 
     print(f'\n=== STATE OF STRATEGY ===\n')
     print(f'\n{msg}\n')
+    print(f'ProviderA debt: {providerA.totalDebt() / decA}')
+    print(f'ProviderB debt: {providerB.totalDebt() / decB}')
     print(f'ProviderA balance: {providerA.balanceOfWant() / decA}')
     print(f'ProviderB balance: {providerB.balanceOfWant() / decB}')
     print(f'Loose balanceA: {balancer.looseBalanceA() / decA}')
