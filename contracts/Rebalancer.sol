@@ -157,7 +157,6 @@ contract Rebalancer {
 
         uint pooledA = pooledBalanceA();
         uint pooledB = pooledBalanceB();
-        uint lbpTotal = balanceOfLbp();
 
         // there's profit
         if (pooledA >= debtA && pooledB >= debtB) {
