@@ -82,13 +82,13 @@ def oracleB():
 
 @pytest.fixture
 def whaleA(accounts):
-    whale = accounts.at("0x39B3bd37208CBaDE74D0fcBDBb12D606295b430a", force=True) # wftm whale
+    whale = accounts.at("0x39B3bd37208CBaDE74D0fcBDBb12D606295b430a", force=True)  # wftm whale
     return whale
 
 
 @pytest.fixture
 def whaleB(accounts):
-    return accounts.at("0x2dd7C9371965472E5A5fD28fbE165007c61439E1", force=True) # mim whale
+    return accounts.at("0x2dd7C9371965472E5A5fD28fbE165007c61439E1", force=True)  # mim whale
 
 
 @pytest.fixture
@@ -118,6 +118,7 @@ def amountB(accounts, tokenB, user, whaleB):
     amount = 1_000_000 * 10 ** tokenB.decimals()
     tokenB.transfer(user, amount, {"from": whaleB})
     yield amount
+
 
 @pytest.fixture
 def wftm():
@@ -168,12 +169,14 @@ def balancerMathLib(gov, BalancerMathLib):
 @pytest.fixture
 def rebalancer(strategist, Rebalancer, providerA, providerB, lbpFactory, balancerMathLib):
     rebalancer = strategist.deploy(Rebalancer, providerA, providerB, lbpFactory)
+    rebalancer.init2({'from': strategist})
     yield rebalancer
 
 
 @pytest.fixture
 def rebalancerTestOracle(strategist, Rebalancer, providerATestOracle, providerBTestOracle, lbpFactory, balancerMathLib):
     rebalancer = strategist.deploy(Rebalancer, providerATestOracle, providerBTestOracle, lbpFactory)
+    rebalancer.init2({'from': strategist})
     yield rebalancer
 
 

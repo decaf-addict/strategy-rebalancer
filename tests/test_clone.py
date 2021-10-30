@@ -4,7 +4,6 @@ import brownie
 from brownie import Contract
 
 
-
 def test_clone_provider(providerA, providerB, setup, vaultA, vaultB, strategist, rewards, keeper, rebalancer, oracleA,
                         oracleB):
     # providerB is already a clone of providerA, operations with clones are covered in all other tests
@@ -29,7 +28,7 @@ def test_clone_rebalancer(rebalancer, Rebalancer, setup, testSetup, gov, lbpFact
 
     transaction = rebalancer.cloneRebalancer(providerA, providerB, lbpFactory, {"from": gov})
     cloned_rebalancer = Rebalancer.at(transaction.return_value)
-
+    cloned_rebalancer.init2({'from': gov})
     util.stateOfStrat("orig rebalancer", rebalancer, providerA, providerB)
 
     vaultA.withdraw({'from': user})
