@@ -2,10 +2,10 @@ from brownie import Contract, accounts, config, network, project, web3, accounts
 
 
 def main():
-    aProvider = Contract("0x4050eB90c15F27aa75b5CFcb934a26fDE60Cf9Cb")
-    bProvider = Contract("0x580Ae3AeD3E8e8d83c970FA6D2766C0Fb8AF759F")
-    rebalancer = Contract("0xD950Ded4ABC40412c896439bD6c2F38B17Ee78f3")
-    balancerMathLib = Contract("0xFad59eDB20D1FFE60BB3feD124a4aaae1D225534")
+    aProvider = Contract("0xff3AeA00d3d58ba1a3672c766cc5060FfCb8cca3")
+    bProvider = Contract("0xAB1d2ABbe31FA5945BfA0864f29dadDcB9cd9eAc")
+    rebalancer = Contract("0x9AC6B9bEe8552F207C0f4e375b980955e6CF807F")
+    balancerMathLib = Contract("0xd984d56465c82E7066898433b5479B4b0026D28D")
     aFeed = aProvider.getPriceFeed()
     bFeed = bProvider.getPriceFeed()
     aFeedDec = aProvider.getPriceFeedDecimals()
