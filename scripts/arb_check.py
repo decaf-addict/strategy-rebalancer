@@ -52,6 +52,9 @@ def main():
         print(
             f'arbed {arb_in / 1e18} {Contract(rebalancer.tokenB()).symbol()} for {arb_out / 1e18} {Contract(rebalancer.tokenA()).symbol()}')
 
+    slippage_gain = 0
     if (arb_out > out_perfect):
         slippage_gain = (arb_out - out_perfect) / out_perfect * 100
-        print(f'arber gained {slippage_gain}%')
+
+    print(f'arber gained {slippage_gain}%')
+    print(f'should tend? {slippage_gain > 0}')
